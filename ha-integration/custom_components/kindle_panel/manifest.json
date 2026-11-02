@@ -1,0 +1,10 @@
+{
+  "domain": "kindle_panel",
+  "name": "Kindle Panel",
+  "version": "0.2.0",
+  "config_flow": true,
+  "codeowners": [],
+  "dependencies": ["frontend", "http", "panel_custom", "websocket_api"],
+  "iot_class": "local_polling",
+  "requirements": []
+}

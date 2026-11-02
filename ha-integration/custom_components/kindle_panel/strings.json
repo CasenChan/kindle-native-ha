@@ -1,0 +1,6 @@
+{
+  "config": {
+    "step": {"user": {"title": "Kindle 控制面板", "description": "添加原生 Kindle 面板的网页编辑器。安装后可选择实体、图标和布局，并在模拟器中预览。Kindle 使用独立配对密钥，无需管理员访问令牌。"}},
+    "abort": {"already_configured": "Kindle 控制面板已经配置。"}
+  }
+}

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extension>
+  <information>
+    <name>Home Assistant</name>
+    <version>0.1.0</version>
+    <author>Kindle Native HA</author>
+    <id>nativeha</id>
+  </information>
+  <menus>
+    <menu type="json" dynamic="true">menu.json</menu>
+  </menus>
+</extension>

@@ -1,0 +1,11 @@
+{
+  "items": [
+    {
+      "name": "Home Assistant",
+      "priority": 0,
+      "action": "/mnt/us/extensions/nativeha/launch.sh",
+      "status": false,
+      "internal": "status Starting Home Assistant"
+    }
+  ]
+}
