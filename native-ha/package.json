@@ -1,0 +1,12 @@
+{
+  "name": "kindle-native-ha",
+  "private": true,
+  "version": "0.2.0",
+  "scripts": {
+    "test": "fengari tests/deviceapi_contract.lua && fengari tests/devicetransport_contract.lua",
+    "check": "fengari tests/syntax.lua"
+  },
+  "devDependencies": {
+    "fengari-node-cli": "0.1.0"
+  }
+}
