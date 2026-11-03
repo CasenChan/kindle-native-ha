@@ -11,7 +11,7 @@ python ha-integration/build.py
 python ha-integration/package.py
 ```
 
-解压 `ha-integration/dist/kindle-panel-0.4.1.zip`，将其中 `custom_components/kindle_panel` 复制到 HA 配置目录的 `custom_components/kindle_panel`。可使用 HA 官方 File editor；配置目录在不同安装中可能显示为 `/config` 或 `/homeassistant`。
+解压 `ha-integration/dist/kindle-panel-0.5.0.zip`，将其中 `custom_components/kindle_panel` 复制到 HA 配置目录的 `custom_components/kindle_panel`。可使用 HA 官方 File editor；配置目录在不同安装中可能显示为 `/config` 或 `/homeassistant`。
 
 检查 HA 配置并重启，在“设置 → 设备与服务 → 添加集成”搜索 **Kindle Panel**。完成后打开侧边栏 **Kindle 面板**。
 
@@ -70,6 +70,10 @@ python native-ha/prepare_startup_usb.py --device H:/
 
 顶部太阳按钮打开背光面板：两侧按钮逐级调暗/调亮，中间亮度条可直接点选，下方为关闭、低、中、高四档；点面板外关闭。底部页签切换页面，也可左右滑动。点击状态已过期的卡片会先刷新再执行，一次点击即可。
 
+## 触摸点亮背光
+
+在「面板设置 → 触摸点亮背光」开启后，背光在无操作达到设定时间（10 秒到 5 分钟）后熄灭，点一下屏幕即恢复到你设定的亮度；熄灭后的第一次点击只点亮背光，不会触发卡片。亮度条支持点选、拖动和快速滑动。HA 背光实体与夜间背光在熄灭期间只修改「点亮时的亮度」，不会把屏幕点亮。
+
 ## 夜间背光与自动回首页
 
 在编辑器「面板设置」中可开启夜间背光：进入时段时 Kindle 记住当前亮度并调到设定值，结束时恢复；时段内手动调节会保留到下一次切换。时间按 Kindle 自身时钟计算。「自动回到首页」会在无人操作达到设定时间后回到第一页。
@@ -82,7 +86,7 @@ python native-ha/prepare_startup_usb.py --device H:/
 
 1. 先按常规流程更新 HA 集成（新版集成内置配套的 Kindle 插件）。
 2. 在编辑器「面板设置 → 插件在线更新」中开启。
-3. Kindle 刷新后，状态行显示「插件可更新」，在右上角菜单选择「更新插件」并确认。全部文件校验通过后才写入，旧文件备份在 `nativeha/plugin-backup/`，面板随后自动重启。
+3. Kindle 刷新后，状态行显示「插件可更新」，在右上角菜单选择「更新插件」并确认。菜单里的「插件更新」项始终存在：没有可装的更新时，点它会说明原因（HA 未开启在线更新、已是最新，或 HA 集成过旧）。0.3 插件没有这项功能，需先用 USB 装上 0.4 及以上版本。全部文件校验通过后才写入，旧文件备份在 `nativeha/plugin-backup/`，面板随后自动重启。
 4. 如有问题，在菜单中选择「恢复上一版本插件」，或照常用 USB 部署。更新完成后可在 HA 中关闭在线更新。
 
 在线更新只适合可信的家庭网络，原因见[架构说明](architecture.md#插件在线更新)。

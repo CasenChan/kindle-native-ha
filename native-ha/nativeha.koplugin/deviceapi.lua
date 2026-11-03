@@ -68,6 +68,8 @@ function Client:accept(snapshot, fresh)
     if (snapshot.hash ~= nil and type(snapshot.hash) ~= 'string')
         or (snapshot.night_light ~= nil and type(snapshot.night_light) ~= 'table')
         or (snapshot.plugin ~= nil and type(snapshot.plugin) ~= 'table')
+        or (snapshot.touch_light ~= nil and (type(snapshot.touch_light) ~= 'table'
+            or (snapshot.touch_light.timeout ~= nil and not number(snapshot.touch_light.timeout, 5, 3600))))
         or (snapshot.home_timeout ~= nil and not number(snapshot.home_timeout, 0, 1440))
         or (snapshot.backlight_target ~= nil and (type(snapshot.backlight_target) ~= 'table'
             or not number(snapshot.backlight_target.id, 0, 2^52) or not number(snapshot.backlight_target.level, 0, 100))) then

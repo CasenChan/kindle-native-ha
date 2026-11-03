@@ -45,6 +45,7 @@ function NativeHA:init()
     self.ui.menu:registerToMainMenu(self)
     self.refresh_task=function()if self.active and not self.suspended then self:refresh(false)end end
     self.home_task=function()if self.active and not self.suspended then self:returnHome()end end
+    self.dark_task=function()self:goDark()end
     self.capture_task=function()
         if self.active and not self.captured and not self.popup and not self.suspended then
             UIManager:forceRePaint()
@@ -61,9 +62,10 @@ end
 function NativeHA:deviceInfo()
     local power=Device:getPowerDevice()
     local light=self.client and self:backlightState()
+    local level=light and self:effectiveLevel()
     return {width=Device.screen:getWidth(),height=Device.screen:getHeight(),battery=power:getCapacity(),
         charging=power:isCharging() or power:isCharged(),plugin_version=self.version,
-        backlight=light and math.floor(light.level*100/math.max(1,light.max)+0.5) or nil,
+        backlight=light and math.floor(level*100/math.max(1,light.max)+0.5) or nil,
         backlight_ack=self.backlight_ack}
 end
 
@@ -109,12 +111,12 @@ function NativeHA:startPanel()
     self.status,self.status_error='正在连接…',false
     self.panel=self.Panel:new{
         on_refresh=function()self:refresh(true)end,
-        on_interaction=function()self:noteInteraction()end,
+        on_interaction=function()return self:noteInteraction()end,
         on_confirm=function(hit)self.status,self.status_error=hit.confirm..'（5 秒内）',false;self:render(nil,true)end,
         on_menu=function()self:showMenu()end,
         on_action=function(hit,pos)self:perform(hit,pos)end,
         on_backlight_open=function()self:toggleBacklight()end,
-        on_backlight=function(level)self:setBacklight(level)end,
+        on_backlight=function(level,mode)self:setBacklight(level,mode)end,
     }
     self:render('full')
     UIManager:show(self.panel)
@@ -151,9 +153,11 @@ end
 
 function NativeHA:noteInteraction()
     self.last_interaction=os.time()
+    local woke=self:wakeLight()
     local timeout=tonumber(self.client.snapshot.home_timeout) or 0
     UIManager:unschedule(self.home_task)
     if timeout>0 then UIManager:scheduleIn(timeout*60+1,self.home_task)end
+    return woke
 end
 
 function NativeHA:returnHome()
@@ -195,9 +199,68 @@ function NativeHA:applyLevel(level)
     end
 end
 
-function NativeHA:setBacklight(level)
+-- The level the panel treats as "the" brightness: the real one, or while dimmed by touch-to-light the one the
+-- next touch restores. Night schedule, HA commands and the popover all change this level.
+function NativeHA:effectiveLevel()
+    local state=self:backlightState()
+    if not state then return nil end
+    if self.auto_dark then return self.wake_level or math.floor(state.max/2) end
+    return state.level
+end
+
+function NativeHA:setLight(level)
+    if self.auto_dark then self.wake_level=level;return end   -- stays dark until the next touch
     self:applyLevel(level)
-    self.panel.popover=self:backlightState();self:render('ui')
+    if level>0 then self.wake_level=level end
+end
+
+function NativeHA:setBacklight(level,mode)
+    self:setLight(level)
+    self:wakeLight()            -- restart the auto-off timer while adjusting
+    self.panel.popover=self:backlightState();self:render(mode or 'ui')
+end
+
+-- Touch-to-light: any touch turns the light on (the waking tap does nothing else) and it goes dark again after
+-- the configured idle time. Returns true when this call turned the light on.
+function NativeHA:touchLight()
+    local touch=self.client.snapshot.touch_light
+    return type(touch)=='table' and touch.enabled==true and Device:hasFrontlight() and touch or nil
+end
+
+function NativeHA:wakeLight()
+    local touch=self:touchLight()
+    if not touch then return false end
+    local woke=false
+    if self.auto_dark then
+        self.auto_dark=false
+        self:applyLevel(self.wake_level or math.floor(self:backlightState().max/2))
+        woke=true
+    end
+    UIManager:unschedule(self.dark_task)
+    UIManager:scheduleIn(tonumber(touch.timeout) or 30,self.dark_task)
+    return woke
+end
+
+function NativeHA:goDark()
+    if not self.active or not self:touchLight() or self.auto_dark then return end
+    if self.panel.popover or self.popup or self.busy then
+        UIManager:scheduleIn(tonumber(self:touchLight().timeout) or 30,self.dark_task);return
+    end
+    local state=self:backlightState()
+    if state.level>0 then self.wake_level=state.level end
+    self:applyLevel(0)
+    self.auto_dark=true
+end
+
+-- Follow setting changes from HA: switching the feature off restores the light; switching it on starts the timer.
+function NativeHA:syncTouchLight()
+    if self:touchLight() then
+        if not self.auto_dark and not self.dark_scheduled then self.dark_scheduled=true;self:wakeLight() end
+    else
+        self.dark_scheduled=false
+        UIManager:unschedule(self.dark_task)
+        if self.auto_dark then self.auto_dark=false;self:applyLevel(self.wake_level or 0) end
+    end
 end
 
 -- Night schedule: entering the window saves the current level and dims; leaving it restores the saved level.
@@ -214,11 +277,11 @@ function NativeHA:applyNightLight()
         if start<finish then inside=current>=start and current<finish else inside=current>=start or current<finish end
     end
     if inside and not self.night.active then
-        self.night={active=true,day_level=state.level}
-        self:applyLevel(math.floor((tonumber(night.level) or 0)*state.max/100+0.5))
+        self.night={active=true,day_level=self:effectiveLevel()}
+        self:setLight(math.floor((tonumber(night.level) or 0)*state.max/100+0.5))
         writeJSON(NIGHT_STATE,self.night)
     elseif not inside and self.night.active then
-        self:applyLevel(tonumber(self.night.day_level) or state.level)
+        self:setLight(tonumber(self.night.day_level) or self:effectiveLevel())
         self.night={active=false}
         writeJSON(NIGHT_STATE,self.night)
     end
@@ -229,7 +292,7 @@ function NativeHA:applyRemoteBacklight()
     local target=self.client.snapshot.backlight_target
     local state=self:backlightState()
     if type(target)~='table' or not state or type(target.id)~='number' or target.id==self.backlight_ack then return end
-    self:applyLevel(math.floor((tonumber(target.level) or 0)*state.max/100+0.5))
+    self:setLight(math.floor((tonumber(target.level) or 0)*state.max/100+0.5))
     self.backlight_ack=target.id
     if self.panel.popover then self.panel.popover=self:backlightState() end
     UIManager:unschedule(self.refresh_task)
@@ -334,6 +397,7 @@ function NativeHA:refresh(manual)
         self.status,self.status_error=(err or '连接失败')..' · 轻触重试',true
     end
     self:updatePower()
+    self:syncTouchLight()
     self:applyNightLight()
     local remote=result and self:applyRemoteBacklight()
     local changed=pressed or (result and (result.hash==nil or result.hash~=previous))
@@ -376,10 +440,9 @@ function NativeHA:showMenu()
             close();UIManager:show(InfoMessage:new{text='在 HA 网页的“Kindle 面板”里编辑页面、房间分组和卡片。\n\n首次使用请在“设备”里下载配对文件，放到 Kindle 的 nativeha 文件夹，再打开本面板。'})
         end}},
     }
-    if self:updateAvailable() then
-        table.insert(buttons,{{text='更新插件 '..tostring(self.version)..' → '..self.client.snapshot.plugin.version,
-            callback=function()close();self:confirmUpdate()end}})
-    end
+    table.insert(buttons,{{text=self:updateAvailable() and ('更新插件 '..tostring(self.version)..' → '..self.client.snapshot.plugin.version)
+        or ('插件更新（当前 '..tostring(self.version or '未知')..'）'),
+        callback=function()close();if self:updateAvailable() then self:confirmUpdate() else self:explainUpdate() end end}})
     if self.Updater.hasBackup(self:updateFs(),self:updateDirs()) then
         table.insert(buttons,{{text='恢复上一版本插件',callback=function()close();self:runRollback()end}})
     end
@@ -396,6 +459,23 @@ function NativeHA:showMenu()
     self.popup=dialog;UIManager:show(dialog)
 end
 
+-- Why there is nothing to install right now, and what to do about it.
+function NativeHA:explainUpdate()
+    local plugin=self.client.snapshot.plugin
+    local current=tostring(self.version or '未知')
+    local text
+    if type(plugin)~='table' then
+        text='当前插件 '..current..'。\n\nHA 中的 Kindle Panel 集成版本过旧，不支持在线更新。请先更新 HA 集成。'
+    elseif plugin.allowed==false then
+        text='当前插件 '..current..'，HA 中的插件版本 '..tostring(plugin.version)..'。\n\nHA 尚未开启在线更新：在 HA「Kindle 面板 → 面板设置 → 插件在线更新」中开启后，刷新即可在这里更新。'
+    elseif not self.client.online then
+        text='当前插件 '..current..'。\n\n暂时连不上 HA，联网刷新后再试。'
+    else
+        text='当前插件 '..current..'，已是最新版本。'
+    end
+    UIManager:show(InfoMessage:new{text=text})
+end
+
 function NativeHA:confirmUpdate()
     local ConfirmBox=require('ui/widget/confirmbox')
     UIManager:show(ConfirmBox:new{
@@ -409,6 +489,8 @@ function NativeHA:stopPanel()
     if not self.active then return end
     self.active=false
     UIManager:unschedule(self.refresh_task);UIManager:unschedule(self.capture_task);UIManager:unschedule(self.home_task)
+    UIManager:unschedule(self.dark_task)
+    if self.auto_dark then self.auto_dark=false;self:applyLevel(self.wake_level or 0) end
     if self.popup then UIManager:close(self.popup);self.popup=nil end
     if self.panel then UIManager:close(self.panel);self.panel=nil end
     PluginShare.keepalive,PluginShare.pause_auto_suspend=self.old_keepalive,self.old_pause
@@ -418,7 +500,7 @@ function NativeHA:stopPanel()
     end
 end
 function NativeHA:onSuspend()self.suspended=true;UIManager:unschedule(self.refresh_task);UIManager:unschedule(self.capture_task);UIManager:unschedule(self.home_task)end
-function NativeHA:onResume()if self.active then self.suspended=false;self:updatePower();UIManager:scheduleIn(1,self.refresh_task)end end
+function NativeHA:onResume()if self.active then self.suspended=false;self:updatePower();self:wakeLight();UIManager:scheduleIn(1,self.refresh_task)end end
 function NativeHA:onCharging()if self.active then self:updatePower()end end
 function NativeHA:onNotCharging()if self.active then self:updatePower()end end
 function NativeHA:onNetworkConnected()if self.active and not self.suspended then UIManager:scheduleIn(1,self.refresh_task)end end

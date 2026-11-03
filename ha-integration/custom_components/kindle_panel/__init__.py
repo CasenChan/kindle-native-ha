@@ -224,7 +224,8 @@ class SnapshotView(HomeAssistantView):
         frame, _ = manager.frame(owner, manager.layout, device)
         update = manager.layout["allow_update"] and device.get("plugin_version") not in (None, VERSION)
         return web.json_response({**frame, "device": manager.device_public(device),
-                                  "plugin": {"version": VERSION, "update": bool(update)},
+                                  "plugin": {"version": VERSION, "update": bool(update),
+                                             "allowed": manager.layout["allow_update"]},
                                   "backlight_target": device.get("backlight_target")})
 
 

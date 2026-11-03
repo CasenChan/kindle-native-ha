@@ -1,15 +1,15 @@
 {
- "version": "0.4.1",
+ "version": "0.5.0",
  "files": [
   {
    "path": "plugin/_meta.lua",
    "bytes": 141,
-   "sha256": "1d150225ee270a6943998589778b99b89cd6395dbf6bd4b9f419925df4a025bc"
+   "sha256": "44c496686984e951212fc5f488aea36949b9a72a92dac780c3ecc98a11844201"
   },
   {
    "path": "plugin/deviceapi.lua",
-   "bytes": 5360,
-   "sha256": "a90dd12bfb57f4064893f9b3582d90375e2d515e3525b978916b955b2a21d6b5"
+   "bytes": 5552,
+   "sha256": "a3d8f4606085bee9c06c290ab411d0040f9f4a37331b24be10cf6f7f48307f2e"
   },
   {
    "path": "plugin/devicetransport.lua",
@@ -18,13 +18,13 @@
   },
   {
    "path": "plugin/main.lua",
-   "bytes": 20317,
-   "sha256": "2a2687b530ab2cf19df0aad7b527ddf259b1dc54603bd04f92a7809c118eec7b"
+   "bytes": 24141,
+   "sha256": "165c21523f2501ca436d090f0329295e9fc6d6e971eae66478280ca2872f3788"
   },
   {
    "path": "plugin/panelwidget.lua",
-   "bytes": 12995,
-   "sha256": "a750343f58b9c9cf1018d66328cff32d6e18e5e1f7ce60a2a9b5babd8a6b8e9e"
+   "bytes": 14751,
+   "sha256": "09a7f51dbeea258cf584074a4c1f07613d40a376ff433d6e34c15d922e173e70"
   },
   {
    "path": "plugin/updater.lua",
@@ -120,6 +120,21 @@
    "path": "icons/door.svg",
    "bytes": 248,
    "sha256": "300970a9a57835b8e7d260bbccd4ca8717e01865a61f481e4b051cc52bf5965d"
+  },
+  {
+   "path": "icons/down-g.svg",
+   "bytes": 192,
+   "sha256": "a44e66a454b18e8ebce1ae94f691aab84ffd83114e81a34239933743afa750db"
+  },
+  {
+   "path": "icons/down-w.svg",
+   "bytes": 189,
+   "sha256": "51cc2a0b49d82cd4f65918163421e07d6d32bbdcb68a8c13e3809f04bb48b71a"
+  },
+  {
+   "path": "icons/down.svg",
+   "bytes": 189,
+   "sha256": "339ac2a84d1aea96075b690885340d70138c55831bba0579a754e8f1d21c86ce"
   },
   {
    "path": "icons/fan-g.svg",
@@ -362,6 +377,21 @@
    "sha256": "d967a9c01ce6462bfbe9a60c1bde992055e3e6bc832e7585b29c7fca0c924026"
   },
   {
+   "path": "icons/stop-g.svg",
+   "bytes": 210,
+   "sha256": "33351505803d4f9cf3a54ada37e6a444b2fff94738e892e9e67f8d6be1db09fd"
+  },
+  {
+   "path": "icons/stop-w.svg",
+   "bytes": 207,
+   "sha256": "20fda2019c15d1c326e9c4272187436549da3a5f7748128c48c60cae443991ba"
+  },
+  {
+   "path": "icons/stop.svg",
+   "bytes": 207,
+   "sha256": "bbd034024bbafbae3f71476ced0d78b6b28d7ee89343841e39d2a97a028f737d"
+  },
+  {
    "path": "icons/sun-g.svg",
    "bytes": 300,
    "sha256": "5c701a7226938373f76ce1851cfd88124c02d0799e202bea9f865c8e79596af6"
@@ -437,6 +467,21 @@
    "sha256": "576b017949eb7abedcb55e74c72114b5144c3176068704c4e3feb2421def47a8"
   },
   {
+   "path": "icons/up-g.svg",
+   "bytes": 192,
+   "sha256": "f5df855c30529fb92e52b1d5c36485cf99afa735e8cbf7f9a6ff20e258553d27"
+  },
+  {
+   "path": "icons/up-w.svg",
+   "bytes": 189,
+   "sha256": "0f405de0bf061a67da4107008d9e38a3f9902e2741d726f1fc68c3487f1fa71a"
+  },
+  {
+   "path": "icons/up.svg",
+   "bytes": 189,
+   "sha256": "5994b1dedb82bff5e4e75086bb8533403d7c518a1ce96d9d0652d5cdc4f2a34d"
+  },
+  {
    "path": "icons/wifi-g.svg",
    "bytes": 261,
    "sha256": "6bb5a162b070d381da1e92fa0900cbe78b63d523f59a47db18fc42092a0af864"
@@ -468,8 +513,8 @@
   },
   {
    "path": "default-snapshot.json",
-   "bytes": 3066,
-   "sha256": "cc0f58cfc1e6baece03fd3abbd40e45d00062f28eaddaf307af3e81eed48df9f"
+   "bytes": 3116,
+   "sha256": "5e45f6c8474768d776fc762353fc1ad601d4bc3ac01017a3ddea8bc819a89ddf"
   }
  ]
 }
