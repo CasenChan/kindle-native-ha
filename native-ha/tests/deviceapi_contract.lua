@@ -2,12 +2,14 @@ local Client=dofile('nativeha.koplugin/deviceapi.lua')
 local checks=0
 local function check(value,message)assert(value,message);checks=checks+1 end
 local function snapshot()
-    local metrics={pad=28,icon_size=64,icon_y=40,title_y=118,value_y=157,title_font=25,value_font=38,small_font=19,
-        climate_title_x=112,mode_y=63,current_y=110,climate_value_font=45,label_font=17,control_h=60,control_font=28}
-    return {revision=3,layout={tiles={{id='left',title='Lamp',kind='toggle'}}},
-        geometry={width=758,height=1024,pages=1,fonts={header=34,title=25,value=38,small=20},
-            cards={{id='left',x=20,y=108,w=351,h=268,page=0,metrics=metrics}}},
-        states={left={state='on',available=true,attributes={}}}}
+    return {protocol=2,revision=3,refresh_seconds=30,power_mode='external-refresh',
+        screen={width=758,height=1024,scale=1},
+        pages={{id='home',title='家',
+            ops={{t='r',x=20,y=128,w=351,h=268,f=255,b=2,c=0,r=18},{t='x',x=48,y=300,s=24,v='Lamp'},
+                {t='i',x=48,y=150,s=38,n='bulb',c='k'},{t='x',x=28,y=84,s=19,v='',k='status'}},
+            hits={{x=20,y=128,w=351,h=268,tile='left',action='power',value=false},{x=0,y=0,w=600,h=128,['local']='refresh'}},
+            cards={{id='left',x=20,y=128,w=351,h=268,r=18}}}},
+        states={left={state='on',available=true}}}
 end
 local calls,now,failure={},1000,false
 local client=Client.new(function(method,path,body)
@@ -39,10 +41,18 @@ local ok,err,code=client:action('left','power',false)
 check(not ok and code==409,'Recognize a changed layout')
 check(#calls==count+1,'Never retry an action automatically')
 check(not client:available('left'),'Disable controls after a failed request')
-local bad=snapshot();bad.geometry.cards[1].w=9000
-check(not client:accept(bad,true),'Reject out-of-screen geometry')
-bad=snapshot();bad.states.left=nil
-check(not client:accept(bad,true),'Reject missing card state')
-bad=snapshot();bad.geometry.cards[1].metrics.icon_size=99999
-check(not client:accept(bad,true),'Reject unreasonable native icon dimensions')
+local bad=snapshot();bad.protocol=1
+check(not client:accept(bad,true),'Reject frames from an older HA integration')
+bad=snapshot();bad.pages[1].ops[1].w=9000
+check(not client:accept(bad,true),'Reject out-of-screen drawing')
+bad=snapshot();bad.pages[1].hits[1].tile='ghost'
+check(not client:accept(bad,true),'Reject hits for tiles without state')
+bad=snapshot();bad.pages[1].ops[3].n='../../etc/passwd'
+check(not client:accept(bad,true),'Reject icon names that could escape the icon directory')
+bad=snapshot();bad.pages[1].ops[2].s=99999
+check(not client:accept(bad,true),'Reject unreasonable text sizes')
+bad=snapshot();bad.states.left.available='yes'
+check(not client:accept(bad,true),'Reject malformed state')
+bad=snapshot();bad.pages={}
+check(not client:accept(bad,true),'Reject frames without pages')
 print('Scoped device API contract: '..checks..' checks passed')

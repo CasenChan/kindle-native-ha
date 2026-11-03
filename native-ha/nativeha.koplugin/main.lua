@@ -9,6 +9,7 @@ local WidgetContainer = require('ui/widget/container/widgetcontainer')
 local NativeHA = WidgetContainer:extend{ name='nativeha', is_doc_only=false }
 local ROOT = '/mnt/us/nativeha/'
 local PRIVATE = '/var/local/nativeha/'
+local WEEKDAYS = { '日', '一', '二', '三', '四', '五', '六' }
 
 local function readFile(path)
     local file=io.open(path,'r');if not file then return nil end
@@ -26,6 +27,10 @@ end
 local function writeJSON(path,value)
     local ok,encoded=pcall(JSON.encode,value)
     return ok and writeFile(path,encoded) or false
+end
+local function updatedText()
+    local now=os.date('*t')
+    return string.format('%d月%d日 周%s · %02d:%02d 已更新',now.month,now.day,WEEKDAYS[now.wday],now.hour,now.min)
 end
 
 function NativeHA:init()
@@ -66,9 +71,13 @@ function NativeHA:startPanel()
     self.Transport=dofile(self.path..'/devicetransport.lua')
     self.Panel=dofile(self.path..'/panelwidget.lua')
     self.client=self:makeClient()
-    local cached=readJSON(ROOT..'snapshot-cache.json') or readJSON(ROOT..'default-snapshot.json')
-    if not self.client:accept(cached,false) then
-        UIManager:show(InfoMessage:new{text='面板资源不完整，请重新安装。'});return
+    local screen=self:deviceInfo()
+    local cached=readJSON(ROOT..'snapshot-cache.json')
+    if not self.client:accept(cached,false) or cached.screen.width~=screen.width or cached.screen.height~=screen.height then
+        cached=readJSON(ROOT..'default-snapshot.json')
+        if not self.client:accept(cached,false) then
+            UIManager:show(InfoMessage:new{text='面板资源不完整，请重新安装。'});return
+        end
     end
     self.previous_settings={}
     for _,key in ipairs({'screensaver_type','screensaver_show_message','auto_restore_wifi','auto_disable_wifi'})do
@@ -80,13 +89,15 @@ function NativeHA:startPanel()
     G_reader_settings:makeFalse('auto_disable_wifi')
     self.old_keepalive,self.old_pause=PluginShare.keepalive,PluginShare.pause_auto_suspend
     self.active,self.busy,self.suspended=true,false,false
-    self.status='正在连接…'
+    self.status,self.status_error='正在连接…',false
     self.panel=self.Panel:new{
         on_refresh=function()self:refresh()end,
         on_menu=function()self:showMenu()end,
-        on_action=function(tile_id,action,value)self:perform(tile_id,action,value)end,
+        on_action=function(hit,pos)self:perform(hit,pos)end,
+        on_backlight_open=function()self:toggleBacklight()end,
+        on_backlight=function(level)self:setBacklight(level)end,
     }
-    self.panel:update(cached,self.status,false)
+    self:render('full')
     UIManager:show(self.panel)
     self:updatePower()
     writeFile('/tmp/nativeha_ui_ready','ready')
@@ -96,8 +107,7 @@ end
 function NativeHA:updatePower()
     if not self.active then return end
     local info=self:deviceInfo()
-    local layout=self.client.snapshot.layout
-    local awake=layout.power_mode=='always-refresh' or info.charging
+    local awake=self.client.snapshot.power_mode=='always-refresh' or info.charging
     if awake~=self.keep_awake then
         self.keep_awake=awake
         PluginShare.keepalive=awake or self.old_keepalive
@@ -106,16 +116,56 @@ function NativeHA:updatePower()
     end
 end
 
-function NativeHA:render()
-    if self.active then self.panel:update(self.client.snapshot,self.status,self.busy)end
+function NativeHA:tokens()
+    local info=self:deviceInfo()
+    return {status=self.status,status_error=self.status_error,offline=not self.client.online,
+        battery=tostring(info.battery)..'%'..(info.charging and '+' or '')}
 end
+
+function NativeHA:render(mode)
+    if self.active then self.panel:update(self.client.snapshot,self:tokens(),self.busy,mode)end
+end
+
+-- ------------------------------------------------------------------ backlight
+
+function NativeHA:backlightState()
+    if not Device:hasFrontlight() then return nil end
+    local powerd=Device:getPowerDevice()
+    local level=powerd:isFrontlightOn() and powerd:frontlightIntensity() or 0
+    return {level=level,min=powerd.fl_min or 0,max=powerd.fl_max or 24}
+end
+
+function NativeHA:toggleBacklight()
+    if self.panel.popover then
+        self.panel.popover=nil;self:render('flashui');return
+    end
+    local state=self:backlightState()
+    if not state then UIManager:show(InfoMessage:new{text='这台 Kindle 没有可调节的背光。',timeout=3});return end
+    self.panel.popover=state;self:render('ui')
+end
+
+function NativeHA:setBacklight(level)
+    local powerd=Device:getPowerDevice()
+    local state=self:backlightState()
+    if not state then return end
+    level=math.max(0,math.min(state.max,level))
+    if level<=0 then
+        powerd:turnOffFrontlight()
+    else
+        powerd:setIntensity(math.max(state.min,level))
+        if not powerd:isFrontlightOn() then powerd:turnOnFrontlight() end
+    end
+    self.panel.popover=self:backlightState();self:render('ui')
+end
+
+-- ------------------------------------------------------------------ data
 
 function NativeHA:pairIfPresent()
     local pairing=readJSON(ROOT..'kindle-pairing.json')
     if not pairing or type(pairing.code)~='string' then return true end
     if self.failed_pair_code==pairing.code then return nil,'配对码已失效，请在 HA 下载新的配对文件'end
     local ok,request=pcall(self.Transport,pairing.server_url)
-    if not ok then return nil,'配对文件中的地址不受支持'end
+    if not ok then return nil,'配对文件中的地址不受支持，请填写 http:// 局域网地址'end
     local info=self:deviceInfo()
     local result,err,code=request('POST','/api/kindle_panel/pair',{
         code=pairing.code,name=pairing.name or 'Kindle 控制屏',width=info.width,height=info.height,
@@ -141,30 +191,40 @@ end
 function NativeHA:refresh()
     if not self.active or self.busy or self.suspended then return end
     UIManager:unschedule(self.refresh_task)
-    self.busy,self.status=true,'正在读取设备…';self:render();UIManager:forceRePaint()
+    self.busy,self.status,self.status_error=true,'正在读取设备…',false;self:render();UIManager:forceRePaint()
     local paired,pair_error=self:pairIfPresent()
-    local result,err,code
-    if paired then result,err,code=self.client:refresh(self:deviceInfo())else err=pair_error end
+    local result,err
+    if paired then result,err=self.client:refresh(self:deviceInfo())else err=pair_error end
     self.busy=false
+    self.panel.pressed=nil
     if result then
-        local power=self:deviceInfo()
-        self.status='已连接 · '..(power.charging and '接电' or '电池')..' '..tostring(power.battery)..'%'
+        self.status,self.status_error=updatedText(),false
         writeJSON(ROOT..'snapshot-cache.json',result)
-    else self.status=err or '连接失败，请刷新' end
+    else
+        self.status,self.status_error=(err or '连接失败')..' · 轻触重试',true
+    end
     self:updatePower()
     self:render()
     if not self.captured then UIManager:unschedule(self.capture_task);UIManager:scheduleIn(1,self.capture_task)end
-    local interval=self.client.snapshot.layout.refresh_seconds or 30
-    UIManager:scheduleIn(math.max(15,interval),self.refresh_task)
+    UIManager:scheduleIn(math.max(15,self.client.snapshot.refresh_seconds or 30),self.refresh_task)
+    return result
 end
 
-function NativeHA:perform(tile_id,action,value)
+-- A tap on stale state first refreshes, then re-reads the tap position on the fresh frame, so one tap is enough
+-- and the command is always computed from current state (e.g. toggle direction, next temperature).
+function NativeHA:perform(hit,pos)
     if not self.active or self.busy then return end
-    if not self.client:available(tile_id)then self:refresh();return end
-    self.busy,self.status=true,'正在发送指令…';self:render();UIManager:forceRePaint()
-    local result,err,code=self.client:action(tile_id,action,value)
+    if not self.client:available(hit.tile) then
+        if not self:refresh() then return end
+        hit=self.panel:hitAt(pos)
+        if not hit or not hit.tile or not self.client:available(hit.tile) then return end
+        self.panel.pressed=hit.tile
+    end
+    self.busy,self.status,self.status_error=true,'正在发送指令…',false;self:render('fast');UIManager:forceRePaint()
+    local result,err,code=self.client:action(hit.tile,hit.action,hit.value)
     self.busy=false
-    self.status=result and '指令已发送，等待设备状态' or (err or '指令未完成')
+    if result then self.status,self.status_error='指令已发送，等待设备状态…',false
+    else self.status,self.status_error=(err or '指令未完成')..' · 轻触重试',true;self.panel.pressed=nil end
     self:render()
     UIManager:unschedule(self.refresh_task)
     UIManager:scheduleIn(result and 1.5 or code==409 and .1 or 15,self.refresh_task)
@@ -179,8 +239,9 @@ function NativeHA:showMenu()
         modal=true,
         buttons={
             {{text='刷新设备状态',callback=function()close();self:refresh()end}},
+            {{text='屏幕背光',callback=function()close();self:toggleBacklight()end}},
             {{text='连接说明',callback=function()
-                close();UIManager:show(InfoMessage:new{text='在 HA 网页的“Kindle 面板”里选择实体、图标和布局。\n\n首次使用请点击“配对 Kindle”，将下载的 kindle-pairing.json 放到 Kindle 的 nativeha 文件夹，再打开本面板。'})
+                close();UIManager:show(InfoMessage:new{text='在 HA 网页的“Kindle 面板”里编辑页面、房间分组和卡片。\n\n首次使用请在“设备”里下载配对文件，放到 Kindle 的 nativeha 文件夹，再打开本面板。'})
             end}},
             {{text='退出到 Kindle',callback=function()
                 close();writeFile('/tmp/nativeha_manual_exit','manual');self:stopPanel();UIManager:quit()
