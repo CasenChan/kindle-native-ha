@@ -444,6 +444,11 @@ class KindlePanelEditor extends HTMLElement {
       <div class="section"><h3>自动回到首页</h3><div class="field"><div class="seg">${[[0, '关闭'], [1, '1 分'], [3, '3 分'], [5, '5 分'], [10, '10 分'], [30, '30 分']].map(([v, l]) =>
           `<button class="${d.home_timeout === v ? 'on' : ''}" data-action="home-timeout" data-value="${v}">${l}</button>`).join('')}</div>
         <p class="hint">停留在其他页面且无人操作超过设定时间后，Kindle 自动回到第一页。</p></div></div>
+      <div class="section"><h3>触摸点亮背光</h3>
+        <div class="field"><button class="switch-row" data-action="touch-enabled"><span><b style="font-weight:500">点一下屏幕点亮，无操作自动熄灭</b><br><small class="hint">熄灭后第一次点击只点亮背光，不会误触卡片；亮度沿用你设定的亮度</small></span><span class="toggle ${d.touch_light.enabled ? 'on' : ''}"></span></button></div>
+        ${d.touch_light.enabled ? `<div class="field"><span class="label">无操作多久后熄灭</span><div class="seg">${[[10, '10 秒'], [15, '15 秒'], [30, '30 秒'], [60, '1 分'], [120, '2 分'], [300, '5 分']].map(([v, l]) =>
+          `<button class="${d.touch_light.timeout === v ? 'on' : ''}" data-action="touch-timeout" data-value="${v}">${l}</button>`).join('')}</div>
+          <p class="hint">HA 里的「背光」实体和夜间背光会改变点亮时的亮度，熄灭期间不会把屏幕点亮。</p></div>` : ''}</div>
       <div class="section"><h3>夜间背光</h3>
         <div class="field"><button class="switch-row" data-action="night-enabled"><span><b style="font-weight:500">按时间自动调暗背光</b><br><small class="hint">进入时段时记住当前亮度并调暗，结束时恢复；期间手动调节会保留到下一次切换</small></span><span class="toggle ${d.night_light.enabled ? 'on' : ''}"></span></button></div>
         ${d.night_light.enabled ? `<div class="grid2"><div class="field"><label for="night-start">开始</label><input class="input" type="time" id="night-start" data-field="night-start" value="${escapeHtml(d.night_light.start)}"></div>
@@ -662,6 +667,8 @@ class KindlePanelEditor extends HTMLElement {
       }
       case 'lock-unlock': found.tile.allow_unlock = !found.tile.allow_unlock; this.changed({inspector: true}); break;
       case 'home-timeout': this.draft.home_timeout = Number(value); this.changed({inspector: true}); break;
+      case 'touch-enabled': this.draft.touch_light.enabled = !this.draft.touch_light.enabled; this.changed({inspector: true}); break;
+      case 'touch-timeout': this.draft.touch_light.timeout = Number(value); this.changed({inspector: true}); break;
       case 'night-enabled': this.draft.night_light.enabled = !this.draft.night_light.enabled; this.changed({inspector: true}); break;
       case 'night-level': this.draft.night_light.level = Number(value); this.changed({inspector: true}); break;
       case 'allow-update':
