@@ -16,9 +16,9 @@ LAYOUT = protocol.normalize_layout(deepcopy(demo.LAYOUT))
 REVISION = 1
 DEVICES = {
     "demo-bedroom": {"id": "demo-bedroom", "name": "卧室 Kindle", "width": 758, "height": 1024, "battery": 82,
-                     "charging": True, "revision": 1},
+                     "charging": True, "revision": 1, "plugin_version": protocol.VERSION},
     "demo-study": {"id": "demo-study", "name": "书房 Kindle", "width": 758, "height": 1024, "battery": 41,
-                   "charging": False, "revision": 0},
+                   "charging": False, "revision": 0, "plugin_version": "0.3.0"},
 }
 AREAS = {"living": {"area_id": "living", "name": "客厅"}, "bedroom": {"area_id": "bedroom", "name": "卧室"},
          "study": {"area_id": "study", "name": "书房"}}

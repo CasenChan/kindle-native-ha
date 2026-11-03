@@ -55,7 +55,8 @@ class RenderTests(unittest.TestCase):
             for hit in page["hits"]:
                 if "tile" in hit:
                     self.assertIn(hit["tile"], tiles)
-                    self.assertIn(hit["action"], ("power", "activate", "temperature", "mode"))
+                    self.assertIn(hit["action"], ("power", "activate", "temperature", "mode", "brightness",
+                                                  "cover", "media", "lock"))
                 else:
                     self.assertIn(hit["local"], ("refresh", "backlight", "menu", "page"))
 
@@ -89,6 +90,31 @@ class RenderTests(unittest.TestCase):
         snap, _ = render(layout)
         self.assertEqual(len(snap["pages"][0]["cards"]), 32)
         self.assertGreater(min(card["h"] for card in snap["pages"][0]["cards"]), 70)
+
+    def test_new_controls_are_rendered(self):
+        snap, views = render()
+        hits = {(hit.get("tile"), hit.get("action"), hit.get("value")) for page in snap["pages"] for hit in page["hits"]}
+        self.assertIn(("t1", "brightness", 1), hits)
+        self.assertEqual(views["t1"]["brightness"], 60)
+        self.assertIn(("t22", "media", "next"), hits)
+        self.assertIn(("t23", "cover", "stop"), hits)
+        unlock = [hit for page in snap["pages"] for hit in page["hits"] if hit.get("tile") == "t10"]
+        self.assertEqual(unlock[0]["value"], False)
+        self.assertTrue(unlock[0]["confirm"])
+
+    def test_locks_without_permission_cannot_be_unlocked_from_the_kindle(self):
+        layout = p.normalize_layout(demo.LAYOUT)
+        p.find_tile(layout, "t10")["allow_unlock"] = False
+        snap, _ = r.snapshot(layout, 1, demo.STATES, "°C", 758, 1024)
+        self.assertFalse([hit for page in snap["pages"] for hit in page["hits"] if hit.get("tile") == "t10"])
+
+    def test_hash_changes_only_with_content(self):
+        first, _ = render()
+        again, _ = render()
+        self.assertEqual(first["hash"], again["hash"])
+        states = {**demo.STATES, "light.bedside": {**demo.STATES["light.bedside"], "state": "off"}}
+        changed, _ = render(states=states)
+        self.assertNotEqual(first["hash"], changed["hash"])
 
     def test_payload_stays_small(self):
         snap, _ = render()

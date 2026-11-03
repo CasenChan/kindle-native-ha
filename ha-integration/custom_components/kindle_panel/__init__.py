@@ -6,6 +6,7 @@ from copy import deepcopy
 import json
 import logging
 from pathlib import Path
+import re
 import time
 
 from aiohttp import web
@@ -16,6 +17,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.storage import Store
 
@@ -23,6 +25,7 @@ from .protocol import (
     DOMAIN, ICONS, VERSION, Pairing, ProtocolError, authenticate, default_layout, display_unit, find_tile,
     iter_tiles, normalize_layout, service_for_action,
 )
+from .number import SIGNAL_NEW_DEVICE, signal_device_updated
 from .render import snapshot
 
 _LOGGER = logging.getLogger(__name__)
@@ -30,9 +33,12 @@ _LOGGER = logging.getLogger(__name__)
 vol = getattr(websocket_api.decorators, "vol", None) or websocket_api.decorators.probatio
 
 PANEL_PATH = "kindle-panel"
+NATIVE_DIR = Path(__file__).parent / "native"
+PLUGIN_VERSION = re.compile(r"\d+(\.\d+){1,3}")
 API_PATH = "/api/kindle_panel"
 DEFAULT_SCREEN = {"width": 758, "height": 1024}
 MAX_DEVICES = 5
+PLATFORMS = ["number"]
 
 
 class Runtime:
@@ -67,7 +73,8 @@ class Runtime:
     @staticmethod
     def device_public(device):
         return {key: device.get(key) for key in
-                ("id", "name", "width", "height", "last_seen", "battery", "charging", "revision")}
+                ("id", "name", "width", "height", "last_seen", "battery", "charging", "revision",
+                 "plugin_version", "backlight")}
 
     def state_for(self, entity_id):
         state = self.hass.states.get(entity_id)
@@ -105,6 +112,17 @@ class Runtime:
                 "devices": [self.device_public(item) for item in self.devices.values()],
                 "system_unit": self.system_unit, "suggested_url": self.suggested_url(),
                 "icons": list(ICONS), "version": VERSION, "now": time.time()}
+
+    async def set_backlight(self, device_id, level):
+        """Queue a backlight command; the Kindle applies it on its next snapshot and acknowledges the id."""
+        device = self.devices.get(device_id)
+        if device is None:
+            return
+        # Small per-device sequence numbers survive any JSON number encoding on the Kindle side.
+        device["backlight_seq"] = device.get("backlight_seq", 0) + 1
+        device["backlight_target"] = {"id": device["backlight_seq"], "level": max(0, min(100, int(level)))}
+        await self.save()
+        async_dispatcher_send(self.hass, signal_device_updated(device_id))
 
     async def auth_device(self, key):
         device = authenticate(self.devices, key)
@@ -170,6 +188,7 @@ class PairView(HomeAssistantView):
                 name=device["name"], manufacturer="Amazon", model="Kindle native panel",
                 configuration_url="homeassistant://kindle-panel",
             )
+            async_dispatcher_send(manager.hass, SIGNAL_NEW_DEVICE, device["id"])
         return web.json_response({"device_key": key, "device_id": device["id"]})
 
 
@@ -191,10 +210,62 @@ class SnapshotView(HomeAssistantView):
         width, height = body.get("width"), body.get("height")
         if type(width) is int and type(height) is int and 400 <= width <= 2732 and 400 <= height <= 2732:
             device["width"], device["height"] = width, height
+        backlight, ack, target = body.get("backlight"), body.get("backlight_ack"), device.get("backlight_target")
+        if type(backlight) in {int, float} and 0 <= backlight <= 100:
+            device["backlight"] = round(backlight)
+        if target and type(ack) in {int, float} and ack >= target["id"]:
+            device.pop("backlight_target")
+        async_dispatcher_send(manager.hass, signal_device_updated(device["id"]))
+        plugin = body.get("plugin_version")
+        if isinstance(plugin, str) and PLUGIN_VERSION.fullmatch(plugin):
+            device["plugin_version"] = plugin
         device["revision"] = manager.revision
         manager.store.async_delay_save(manager.stored, 30)
         frame, _ = manager.frame(owner, manager.layout, device)
-        return web.json_response({**frame, "device": manager.device_public(device)})
+        update = manager.layout["allow_update"] and device.get("plugin_version") not in (None, VERSION)
+        return web.json_response({**frame, "device": manager.device_public(device),
+                                  "plugin": {"version": VERSION, "update": bool(update)},
+                                  "backlight_target": device.get("backlight_target")})
+
+
+def native_manifest():
+    """The plugin bundle shipped inside this integration (written by build.py)."""
+    return json.loads((NATIVE_DIR / "manifest.json").read_text(encoding="utf-8"))
+
+
+class UpdateManifestView(HomeAssistantView):
+    url = API_PATH + "/device/update/manifest"
+    name = "api:kindle_panel:update_manifest"
+    requires_auth = False
+
+    async def post(self, request):
+        manager = runtime(request.app[KEY_HASS])
+        await manager.auth_device(request.headers.get("X-Kindle-Key"))
+        if not manager.layout["allow_update"]:
+            return web.json_response({"error": "HA 未开启 Kindle 插件在线更新"}, status=403)
+        manifest = await manager.hass.async_add_executor_job(native_manifest)
+        return web.json_response(manifest)
+
+
+class UpdateFileView(HomeAssistantView):
+    url = API_PATH + "/device/update/file"
+    name = "api:kindle_panel:update_file"
+    requires_auth = False
+
+    async def post(self, request):
+        manager = runtime(request.app[KEY_HASS])
+        await manager.auth_device(request.headers.get("X-Kindle-Key"))
+        if not manager.layout["allow_update"]:
+            return web.json_response({"error": "HA 未开启 Kindle 插件在线更新"}, status=403)
+        body = await read_json(request)
+        manifest = await manager.hass.async_add_executor_job(native_manifest)
+        # Only files listed in the bundled manifest are served; the path never reaches the filesystem otherwise.
+        entry = next((item for item in manifest["files"] if item["path"] == body.get("path")), None)
+        if entry is None:
+            return web.json_response({"error": "文件不在更新清单中"}, status=404)
+        content = await manager.hass.async_add_executor_job(
+            (NATIVE_DIR / entry["path"]).read_text, "utf-8")
+        return web.json_response({"path": entry["path"], "content": content})
 
 
 class ActionView(HomeAssistantView):
@@ -269,7 +340,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     await hass.http.async_register_static_paths([
         StaticPathConfig("/kindle_panel_static", str(Path(__file__).parent / "frontend"), cache_headers=True)
     ])
-    for view in (PairView(), SnapshotView(), ActionView()):
+    for view in (PairView(), SnapshotView(), ActionView(), UpdateManifestView(), UpdateFileView()):
         hass.http.register_view(view)
     websocket_api.async_register_command(hass, websocket_manage)
     return True
@@ -279,6 +350,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     manager = Runtime(hass, entry)
     await manager.load()
     hass.data[DOMAIN] = manager
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await panel_custom.async_register_panel(
         hass, frontend_url_path=PANEL_PATH, webcomponent_name="kindle-panel-editor",
         sidebar_title="Kindle 面板", sidebar_icon="mdi:tablet-dashboard",
@@ -289,6 +361,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        return False
     manager = hass.data.pop(DOMAIN, None)
     if isinstance(manager, Runtime):
         await manager.save()

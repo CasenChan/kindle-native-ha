@@ -10,16 +10,21 @@ import secrets
 import time
 
 DOMAIN = "kindle_panel"
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 LAYOUT_VERSION = 2
 ICONS = ("bulb", "thermostat", "temperature", "humidity", "power", "fan", "home", "scene", "plug", "sensor",
-         "door", "window", "lock", "curtain", "tv", "motion", "battery", "bolt")
+         "door", "window", "lock", "curtain", "tv", "motion", "battery", "bolt", "music")
 TEMPERATURE_UNITS = ("auto", "°C", "°F")
 POWER_MODES = ("external-refresh", "always-refresh")
 MAX_PAGES, MAX_SECTIONS, MAX_COLUMNS, MAX_PAGE_ROWS, MAX_SECTION_TILES, MAX_TILES = 8, 6, 4, 8, 32, 60
 
 TOGGLE_DOMAINS = {"switch", "light", "fan", "input_boolean", "humidifier"}
 ACTION_DOMAINS = {"scene", "script", "button", "input_button"}
+COVER_ACTIONS = {"open": "open_cover", "close": "close_cover", "stop": "stop_cover"}
+MEDIA_ACTIONS = {"play_pause": "media_play_pause", "next": "media_next_track", "previous": "media_previous_track"}
+HOME_TIMEOUTS = (0, 1, 3, 5, 10, 30)
+TIME_PATTERN = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
+DEFAULT_NIGHT = {"enabled": False, "start": "22:00", "end": "07:00", "level": 10}
 DEFAULT_LAYOUT = {
     "version": LAYOUT_VERSION, "refresh_seconds": 30, "power_mode": "external-refresh", "temperature_unit": "auto",
     "pages": [{"id": "home", "title": "我的家", "columns": 2, "sections": [
@@ -46,7 +51,7 @@ def kind_for_entity(entity_id: str) -> str:
         return "climate"
     if domain in ACTION_DOMAINS:
         return "action"
-    return "sensor"
+    return {"cover": "cover", "media_player": "media", "lock": "lock"}.get(domain, "sensor")
 
 
 def integer(value, low: int, high: int, name: str) -> int:
@@ -156,7 +161,24 @@ def normalize_tile(item, seen: set, columns: int, rows: int) -> dict:
     for key in ("x", "y"):
         if type(item.get(key)) is int:
             tile[key] = item[key]
+    if kind == "lock":
+        tile["allow_unlock"] = item.get("allow_unlock") is True
     return tile
+
+
+def normalize_night(value) -> dict:
+    if value is None:
+        return dict(DEFAULT_NIGHT)
+    if not isinstance(value, dict):
+        raise ProtocolError("夜间背光设置有误")
+    night = {**DEFAULT_NIGHT, **{key: value[key] for key in DEFAULT_NIGHT if key in value}}
+    if type(night["enabled"]) is not bool or not all(
+            isinstance(night[key], str) and TIME_PATTERN.fullmatch(night[key]) for key in ("start", "end")):
+        raise ProtocolError("夜间背光时间格式应为 HH:MM")
+    if night["start"] == night["end"]:
+        raise ProtocolError("夜间背光的开始和结束时间不能相同")
+    integer(night["level"], 0, 100, "夜间亮度")
+    return night
 
 
 def normalize_layout(data: dict) -> dict:
@@ -171,6 +193,13 @@ def normalize_layout(data: dict) -> dict:
     unit = data.get("temperature_unit", "auto")
     if unit not in TEMPERATURE_UNITS:
         raise ProtocolError("温度单位有误")
+    home_timeout = data.get("home_timeout", 0)
+    if home_timeout not in HOME_TIMEOUTS or type(home_timeout) is not int:
+        raise ProtocolError("自动回到首页的时间有误")
+    night = normalize_night(data.get("night_light"))
+    allow_update = data.get("allow_update", False)
+    if type(allow_update) is not bool:
+        raise ProtocolError("在线更新设置有误")
     source_pages = data.get("pages")
     if not isinstance(source_pages, list) or not 1 <= len(source_pages) <= MAX_PAGES:
         raise ProtocolError(f"请保留 1 至 {MAX_PAGES} 个页面")
@@ -206,7 +235,8 @@ def normalize_layout(data: dict) -> dict:
     if total < 1 or total > MAX_TILES:
         raise ProtocolError(f"请选择 1 至 {MAX_TILES} 张卡片")
     return {"version": LAYOUT_VERSION, "refresh_seconds": interval, "power_mode": power_mode,
-            "temperature_unit": unit, "pages": pages}
+            "temperature_unit": unit, "home_timeout": home_timeout, "night_light": night,
+            "allow_update": allow_update, "pages": pages}
 
 
 def iter_tiles(layout: dict):
@@ -227,7 +257,7 @@ def default_icon(entity_id: str, device_class: str | None = None) -> str:
                 "curtain": "curtain", "blind": "curtain", "shade": "curtain", "tv": "tv", "outlet": "plug"}
     by_domain = {"light": "bulb", "switch": "plug", "fan": "fan", "climate": "thermostat", "scene": "scene",
                  "script": "scene", "button": "power", "input_button": "power", "lock": "lock", "cover": "curtain",
-                 "media_player": "tv", "humidifier": "humidity", "input_boolean": "power", "person": "home"}
+                 "media_player": "music", "humidifier": "humidity", "input_boolean": "power", "person": "home"}
     return by_class.get(device_class or "") or by_domain.get(domain, "sensor")
 
 
@@ -324,8 +354,19 @@ def service_for_action(tile: dict, action: str, value, state: dict | None,
             return "climate", "set_temperature", {**fields, "temperature": temperature}
         if action == "mode" and isinstance(value, str) and value in (attributes.get("hvac_modes") or []):
             return "climate", "set_hvac_mode", {**fields, "hvac_mode": value}
+    if kind == "toggle" and domain == "light" and action == "brightness" and value in (-1, 1) \
+            and type(value) is int and state.get("state") == "on":
+        return "light", "turn_on", {**fields, "brightness_step_pct": 10 * value}
     if kind == "action" and action == "activate" and value is None:
         return domain, "press" if domain in {"button", "input_button"} else "turn_on", fields
+    if kind == "cover" and action == "cover" and value in COVER_ACTIONS:
+        return "cover", COVER_ACTIONS[value], fields
+    if kind == "media" and action == "media" and value in MEDIA_ACTIONS:
+        return "media_player", MEDIA_ACTIONS[value], fields
+    if kind == "lock" and action == "lock" and type(value) is bool:
+        if not value and not tile.get("allow_unlock"):
+            raise ProtocolError("这张卡片未允许在 Kindle 上开锁")
+        return "lock", "lock" if value else "unlock", fields
     raise ProtocolError("此卡片不支持该操作")
 
 
