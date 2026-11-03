@@ -22,9 +22,9 @@
 | Kindle | Paperwhite 1，固件 5.6.1.1，已越狱 |
 | KOReader | Kindle 2026.07.1 |
 | Home Assistant Core | 2026.9.2 |
-| Kindle Panel 集成 | 0.2.0 实机验证；0.3 / 0.4 尚待实机验证 |
+| Kindle Panel | HA 编辑器 0.4.1；Kindle 插件 0.4.0 已实机验证 |
 
-0.2.0 已在实机验证中文与图标、布局同步、配对、灯光控制、开机进入、接电及休眠唤醒。0.3 / 0.4 重做了编辑器与 Kindle 绘制，HA 集成已在 Home Assistant 2026.2 测试框架中跑通完整流程，但 Kindle 上的字体、触摸、背光和刷新效果需要在实机上重新确认。本项目以已经安装好 KUAL、Hotfix 和 KOReader 的 Kindle 为起点。
+0.4.0 已在 PW1 实机验证中文与图标、布局同步、配对、灯光控制、背光调节和维护退出。开机进入、接电及休眠唤醒在 0.2.0 安装时已验证。0.4.1 修复了网页实体选择器在 HA 状态更新时滚回顶部的问题，与 0.4.0 Kindle 客户端兼容。本项目以已经安装好 KUAL、Hotfix 和 KOReader 的 Kindle 为起点。
 
 ## 快速开始
 

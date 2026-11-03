@@ -1,10 +1,10 @@
 {
- "version": "0.4.0",
+ "version": "0.4.1",
  "files": [
   {
    "path": "plugin/_meta.lua",
    "bytes": 141,
-   "sha256": "8934e6fdeec2556661af0e0fd027c6d1cafbee0e8f58f75d70a859fa1ca75c4c"
+   "sha256": "1d150225ee270a6943998589778b99b89cd6395dbf6bd4b9f419925df4a025bc"
   },
   {
    "path": "plugin/deviceapi.lua",
