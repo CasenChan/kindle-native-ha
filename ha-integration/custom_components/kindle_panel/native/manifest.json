@@ -13,8 +13,8 @@
   },
   {
    "path": "plugin/devicetransport.lua",
-   "bytes": 2209,
-   "sha256": "1ce79087c05199c6fd54a08257921e8f5a13dbc18a4c1b442f9096f185131429"
+   "bytes": 2432,
+   "sha256": "418a6855826c26fbec4e4656b7fcad52eadded34a59131f8d26941751b4a413e"
   },
   {
    "path": "plugin/main.lua",

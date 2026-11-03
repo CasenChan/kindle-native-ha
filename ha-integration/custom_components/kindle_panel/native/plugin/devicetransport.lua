@@ -2,6 +2,9 @@ local JSON = require('json')
 local http = require('socket.http')
 local ltn12 = require('ltn12')
 local socketutil = require('socketutil')
+-- LuaJSON otherwise preserves JSON null as a function sentinel, which fails
+-- optional-field validation (for example when HA has no backlight command).
+local decode_options = { others = { null = false } }
 
 return function(base_url, device_key)
     base_url = base_url:gsub('/+$', '')
@@ -32,7 +35,7 @@ return function(base_url, device_key)
         if not ok or not result then return nil, '连接失败，请检查 Wi-Fi' end
         code = tonumber(code)
         if code == 401 or code == 403 then return nil, '需要重新配对 Kindle', code end
-        local decoded, value = pcall(JSON.decode, table.concat(chunks))
+        local decoded, value = pcall(JSON.decode, table.concat(chunks), decode_options)
         if not code or code < 200 or code >= 300 then
             local message = decoded and type(value) == 'table' and type(value.error) == 'string' and value.error:sub(1,160)
             return nil, message or 'HA 暂时无法处理请求', code

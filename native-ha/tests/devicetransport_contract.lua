@@ -2,10 +2,19 @@ local checks=0
 local function check(condition,message)assert(condition,message);checks=checks+1 end
 local status,response,throw_error=200,'fixture',false
 local last_request,calls,timeout_set,timeout_reset=nil,0,0,0
+local json_null=function()end -- LuaJSON's default representation of JSON null.
 package.preload['json']=function()return {
     encode=function()return '{}'end,
-    decode=function(value)
+    decode=function(value,options)
         if value=='bad-json' then error('invalid json') end
+        if value=='null-fixture' then
+            local target=json_null
+            if options and options.others and options.others.null==false then target=nil end
+            return {protocol=2,revision=3,screen={width=758,height=1024,scale=1},
+                pages={{title='Home',ops={},hits={},cards={}}},
+                states={lamp={available=true,state='off'}},
+                plugin={version='0.4.0',update=false},backlight_target=target}
+        end
         return value=='error' and {error='layout changed'} or {accepted=true}
     end,
 }end
@@ -27,6 +36,14 @@ end}end
 local Transport=dofile('nativeha.koplugin/devicetransport.lua')
 local request=Transport('http://ha.example/','test-device.test-secret')
 check(request('POST','/api/kindle_panel/device/snapshot',{}),'Decode a snapshot')
+response='null-fixture'
+local Client=dofile('nativeha.koplugin/deviceapi.lua')
+local client=Client.new(request)
+local frame=client:refresh({})
+check(frame and client:available('lamp'),'Accept a real HA frame with a null backlight command')
+check(frame.backlight_target==nil,'Decode absent optional commands as nil')
+check(frame.plugin.update==false,'Preserve JSON false while converting null')
+response='fixture'
 check(last_request.url=='http://ha.example/api/kindle_panel/device/snapshot','Use only the configured host')
 check(last_request.headers['X-Kindle-Key']=='test-device.test-secret','Send only the scoped device key')
 check(last_request.headers.Authorization==nil,'Do not use an HA administrator bearer token')
