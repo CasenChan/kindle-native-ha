@@ -127,6 +127,43 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(view["temperature"], 24.5)
 
 
+class NewControlTests(unittest.TestCase):
+    def test_new_kinds(self):
+        self.assertEqual([p.kind_for_entity(e) for e in ("cover.c", "media_player.m", "lock.l", "light.x")],
+                         ["cover", "media", "lock", "toggle"])
+
+    def test_cover_media_and_brightness_services(self):
+        on = {"state": "on"}
+        self.assertEqual(p.service_for_action({"entity_id": "cover.c"}, "cover", "stop", {"state": "open"})[1], "stop_cover")
+        self.assertEqual(p.service_for_action({"entity_id": "media_player.m"}, "media", "next", on)[1], "media_next_track")
+        light = {"entity_id": "light.x"}
+        self.assertEqual(p.service_for_action(light, "brightness", -1, on)[2]["brightness_step_pct"], -10)
+        for action, value, state in (("cover", "explode", {"state": "open"}), ("brightness", 5, on),
+                                     ("brightness", True, on), ("brightness", 1, {"state": "off"})):
+            with self.subTest(action=action, value=value), self.assertRaises(p.ProtocolError):
+                p.service_for_action(light if action == "brightness" else {"entity_id": "cover.c"}, action, value, state)
+
+    def test_unlock_needs_explicit_permission(self):
+        locked = {"state": "locked"}
+        self.assertEqual(p.service_for_action({"entity_id": "lock.l"}, "lock", True, {"state": "unlocked"})[1], "lock")
+        with self.assertRaisesRegex(p.ProtocolError, "开锁"):
+            p.service_for_action({"entity_id": "lock.l"}, "lock", False, locked)
+        self.assertEqual(p.service_for_action({"entity_id": "lock.l", "allow_unlock": True}, "lock", False, locked)[1],
+                         "unlock")
+        layout = p.normalize_layout(layout_with(tile("l", entity_id="lock.l", allow_unlock="yes")))
+        self.assertIs(p.find_tile(layout, "l")["allow_unlock"], False)
+
+    def test_panel_settings(self):
+        layout = p.normalize_layout({**p.default_layout(), "home_timeout": 5, "allow_update": True,
+                                     "night_light": {"enabled": True, "start": "23:00", "end": "06:30", "level": 5}})
+        self.assertEqual((layout["home_timeout"], layout["allow_update"], layout["night_light"]["level"]), (5, True, 5))
+        self.assertFalse(p.default_layout()["allow_update"])
+        for change in ({"home_timeout": 7}, {"allow_update": "yes"}, {"night_light": {"start": "25:00"}},
+                       {"night_light": {"start": "07:00", "end": "07:00"}}, {"night_light": {"level": 101}}):
+            with self.subTest(change=change), self.assertRaises(p.ProtocolError):
+                p.normalize_layout({**p.default_layout(), **change})
+
+
 class DisplayTests(unittest.TestCase):
     def view(self, entity_id, state, unit="°C", **attributes):
         return d.tile_view({"id": "t", "entity_id": entity_id}, {"state": state, "attributes": attributes,

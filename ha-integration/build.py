@@ -1,4 +1,5 @@
-"""Bundle the self-contained HA editor, the native SVG icon set and the Kindle default frame."""
+"""Bundle the HA editor, the native SVG icon set, the Kindle default frame and the OTA plugin bundle."""
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -31,6 +32,26 @@ for name, body in icons.items():
 print(f"Built HA editor ({len(SOURCES)} sources) and {len(icons)} native icons in {len(ICON_COLORS)} colors")
 
 protocol, _, render = load()
+NATIVE = ROOT.parent / "native-ha"
 frame, _ = render.snapshot(protocol.default_layout(), 0, {}, "°C", 758, 1024)
-(ROOT.parent / "native-ha/default-snapshot.json").write_text(json.dumps(frame, ensure_ascii=False), encoding="utf-8", newline="\n")
-shutil.copyfile(ROOT.parent / "native-ha/controller-source.lua", ROOT.parent / "native-ha/nativeha.koplugin/main.lua")
+(NATIVE / "default-snapshot.json").write_text(json.dumps(frame, ensure_ascii=False), encoding="utf-8", newline="\n")
+shutil.copyfile(NATIVE / "controller-source.lua", NATIVE / "nativeha.koplugin/main.lua")
+(NATIVE / "nativeha.koplugin/_meta.lua").write_text(
+    "return {\n    fullname = 'Home Assistant',\n    description = '由 HA 网页编辑的原生墨水屏控制界面。',\n"
+    f"    version = '{protocol.VERSION}',\n}}\n", encoding="utf-8", newline="\n")
+
+# Ship the matching Kindle plugin inside the integration for optional over-the-air updates.
+bundle = ROOT / "custom_components/kindle_panel/native"
+shutil.rmtree(bundle, ignore_errors=True)
+files = [("plugin/" + path.name, path) for path in sorted((NATIVE / "nativeha.koplugin").glob("*.lua"))]
+files += [("icons/" + path.name, path) for path in sorted((NATIVE / "icons").glob("*.svg"))]
+files.append(("default-snapshot.json", NATIVE / "default-snapshot.json"))
+entries = []
+for relative, source in files:
+    value = source.read_bytes()
+    (bundle / relative).parent.mkdir(parents=True, exist_ok=True)
+    (bundle / relative).write_bytes(value)
+    entries.append({"path": relative, "bytes": len(value), "sha256": hashlib.sha256(value).hexdigest()})
+(bundle / "manifest.json").write_text(json.dumps({"version": protocol.VERSION, "files": entries}, indent=1),
+                                      encoding="utf-8", newline="\n")
+print(f"Bundled Kindle plugin {protocol.VERSION} ({len(entries)} files) for over-the-air updates")

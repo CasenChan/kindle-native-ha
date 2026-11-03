@@ -13,6 +13,8 @@ local UIManager = require('ui/uimanager')
 local ICON_DIR = '/mnt/us/nativeha/icons/'
 local ICON_SUFFIX = { k='', w='-w', g='-g' }
 local LIGHT_STEPS = 12
+local CONFIRM_SECONDS = 5
+local FULL_REFRESH_EVERY = 12
 
 local Panel = InputContainer:extend{ covers_fullscreen = true }
 
@@ -94,7 +96,9 @@ function Panel:currentPage()
     return pages[self.page + 1]
 end
 
-function Panel:update(snapshot, tokens, busy, mode)
+-- mode: KOReader refresh type. status_only: only the header status/battery text changed, so refresh just that
+-- strip and do not count it towards the periodic full refresh.
+function Panel:update(snapshot, tokens, busy, mode, status_only)
     self.snapshot, self.tokens, self.busy = snapshot, tokens or {}, busy
     self:freeItems()
     local page, t = self:currentPage(), self.tokens
@@ -121,9 +125,26 @@ function Panel:update(snapshot, tokens, busy, mode)
         end
     end
     if self.popover then self:buildPopover() end
+    if status_only and not self.popover then
+        local region = self:statusRegion(page)
+        if region then UIManager:setDirty(self, 'ui', region);return end
+    end
     self.updates = (self.updates or 0) + 1
-    if self.updates >= 12 then mode, self.updates = 'full', 0 end   -- periodic full refresh clears e-ink ghosting
+    if self.updates >= FULL_REFRESH_EVERY then mode, self.updates = 'full', 0 end  -- clears e-ink ghosting
     UIManager:setDirty(self, mode or 'ui')
+end
+
+-- Bounding box of the header strip holding the device-filled status and battery texts.
+function Panel:statusRegion(page)
+    local top, bottom = nil, nil
+    for _, op in ipairs(page.ops) do
+        if op.t == 'x' and (op.k == 'status' or op.k == 'battery') then
+            top = math.min(top or op.y, op.y)
+            bottom = math.max(bottom or 0, op.y + math.ceil(op.s * 1.5))
+        end
+    end
+    if not top then return nil end
+    return Geom:new{ x=0, y=math.max(0, top - 4), w=self.dimen.w, h=bottom - top + 8 }
 end
 
 function Panel:paintTo(bb, x, y)
@@ -220,6 +241,7 @@ end
 
 function Panel:onTap(_, gesture)
     if not self.snapshot then return true end
+    if self.on_interaction then self.on_interaction() end
     local pos = gesture.pos
     if self.popover then
         local p = self:popoverGeometry()
@@ -243,6 +265,16 @@ function Panel:onTap(_, gesture)
         return true
     end
     if self.busy then return true end
+    if target and target.tile and target.confirm then
+        local armed, now = self.armed, os.time()
+        if not (armed and armed.tile == target.tile and armed.action == target.action and armed.value == target.value
+            and now - armed.time <= CONFIRM_SECONDS) then
+            self.armed = { tile=target.tile, action=target.action, value=target.value, time=now }
+            self.on_confirm(target)
+            return true
+        end
+    end
+    self.armed = nil
     if target and target.tile then
         local card = self:cardAt(pos)
         self.pressed = card and card.id
@@ -258,6 +290,7 @@ end
 
 function Panel:onSwipe(_, gesture)
     if self.popover or not self.snapshot then return true end
+    if self.on_interaction then self.on_interaction() end
     if gesture.direction == 'west' then self:goPage(self.page + 1)
     elseif gesture.direction == 'east' then self:goPage(self.page - 1) end
     return true

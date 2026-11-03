@@ -17,11 +17,15 @@
   "motion": "<circle cx='13' cy='4' r='2'/><path d='m9 21 3-6 3 3v4M7 12l3-4 4 1 3 3M10 8l-1 6'/>",
   "battery": "<rect x='3' y='7' width='16' height='10' rx='2'/><path d='M21 10v4M6 10v4M9 10v4'/>",
   "bolt": "<path d='M13 2 5 14h6l-1 8 8-12h-6Z'/>",
+  "music": "<path d='M9 18V5l11-2v13'/><circle cx='6' cy='18' r='3'/><circle cx='17' cy='16' r='3'/>",
   "menu": "<path d='M4 7h16M4 12h16M4 17h16'/>",
   "sun": "<circle cx='12' cy='12' r='4'/><path d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'/>",
   "sun-low": "<circle cx='12' cy='12' r='3'/><path d='M12 5v1M12 18v1M5 12h1M18 12h1M7 7l.7.7M16.3 16.3l.7.7M7 17l.7-.7M16.3 7.7 17 7'/>",
   "wifi": "<path d='M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0'/><path d='M12 19.5h.01'/>",
   "arrow": "<path d='M5 12h14m-6-6 6 6-6 6'/>",
   "minus": "<path d='M5 12h14'/>",
-  "plus": "<path d='M12 5v14M5 12h14'/>"
+  "plus": "<path d='M12 5v14M5 12h14'/>",
+  "prev": "<path d='M19 20 9 12l10-8v16ZM5 19V5'/>",
+  "next": "<path d='m5 4 10 8-10 8V4ZM19 5v14'/>",
+  "playpause": "<path d='M4 5v14l8-7Z'/><path d='M16 5v14M20 5v14'/>"
 }

@@ -57,6 +57,7 @@ class KindlePanelEditor extends HTMLElement {
       if (!this.pairUrl) this.pairUrl = data.suggested_url || (location.protocol === 'http:' ? location.origin : '');
       if (!this.dirty && (changed || !background)) {
         this.draft = clone(data.layout);
+        this.resetHistory();
         this.frame = data.frame;
         this.views = data.views;
         this.pageIndex = clamp(this.pageIndex, 0, this.draft.pages.length - 1);
@@ -151,7 +152,35 @@ class KindlePanelEditor extends HTMLElement {
     return true;
   }
 
-  changed({inspector = false} = {}) {
+  // ---------------------------------------------------------------- undo / redo
+  resetHistory() { Object.assign(this, {undoStack: [], redoStack: [], lastState: JSON.stringify(this.draft), lastField: null}); }
+  /** Push the previous draft; consecutive keystrokes in the same field within 1.5 s form one step. */
+  record(field) {
+    const now = JSON.stringify(this.draft);
+    if (now === this.lastState) return;
+    if (!(field && field === this.lastField && Date.now() - this.lastTime < 1500)) {
+      this.undoStack.push(this.lastState);
+      if (this.undoStack.length > 50) this.undoStack.shift();
+    }
+    Object.assign(this, {redoStack: [], lastState: now, lastField: field || null, lastTime: Date.now()});
+  }
+  stepHistory(from, to) {
+    if (!from.length) return;
+    to.push(JSON.stringify(this.draft));
+    this.lastState = from.pop();
+    this.lastField = null;
+    this.draft = JSON.parse(this.lastState);
+    this.dirty = this.lastState !== JSON.stringify(this.data.layout);
+    this.pageIndex = clamp(this.pageIndex, 0, this.draft.pages.length - 1);
+    if (!this.selection || !this.lookup(this.selection)) this.selection = this.firstSelection();
+    this.renderAll();
+    this.schedulePreview(0);
+  }
+  undo() { this.stepHistory(this.undoStack, this.redoStack); }
+  redo() { this.stepHistory(this.redoStack, this.undoStack); }
+
+  changed({inspector = false, field = null} = {}) {
+    this.record(field);
     this.dirty = true;
     this.notice = '';
     this.renderTop(); this.renderList();
@@ -168,6 +197,7 @@ class KindlePanelEditor extends HTMLElement {
         if (serial !== this.serial || !this.isConnected) return;
         this.error = '';
         this.mergePlacement(result.layout);
+        this.lastState = JSON.stringify(this.draft);
         this.frame = result.frame;
         this.views = result.views;
         this.renderStage(); this.renderList(); this.renderTop();
@@ -239,7 +269,9 @@ class KindlePanelEditor extends HTMLElement {
       : '<span class="chip hide-narrow"><span class="dot off"></span>尚未配对 Kindle</span>';
     top.innerHTML = `<button class="menu-btn" data-action="menu" aria-label="打开侧边栏">${ui('menu')}</button>
       <span class="brand">Kindle 面板</span><span class="spacer"></span>${notice}${chip}
-      <button class="btn text hide-narrow" data-action="discard" ${this.dirty ? '' : 'disabled'}>${ui('undo')}放弃修改</button>
+      <button class="icon-btn" data-action="undo" ${this.undoStack?.length ? '' : 'disabled'} title="撤销（Ctrl+Z）" aria-label="撤销">${ui('undo')}</button>
+      <button class="icon-btn" data-action="redo" ${this.redoStack?.length ? '' : 'disabled'} title="重做（Ctrl+Shift+Z）" aria-label="重做">${ui('redo')}</button>
+      <button class="btn text hide-narrow" data-action="discard" ${this.dirty ? '' : 'disabled'}>放弃修改</button>
       <button class="btn primary" data-action="save" ${this.dirty && !this.saving ? '' : 'disabled'}>${ui('sync')}${this.hasAttribute('narrow') ? '保存' : '保存并同步'}</button>`;
   }
 
@@ -364,7 +396,9 @@ class KindlePanelEditor extends HTMLElement {
           <p class="hint">也可以直接在预览里拖动卡片、拖右下角改大小，或把左侧列表的卡片拖进其他分组。</p></div></div>
       <div class="section"><h3>图标</h3><div class="icons">${(this.data.icons || Object.keys(ICON_NAMES)).map(name =>
         `<button class="${tile.icon === name ? 'on' : ''}" data-action="tile-icon" data-value="${name}" title="${ICON_NAMES[name] || name}" aria-label="${ICON_NAMES[name] || name}">${iconSvg(name, 'currentColor', 1.8)}</button>`).join('')}</div></div>
-      <div class="section"><button class="btn small danger" data-action="remove-tile">${ui('trash')}从面板移除此卡片</button></div>`;
+      ${kindOf(tile.entity_id) === 'lock' ? `<div class="section"><h3>门锁</h3><button class="switch-row" data-action="lock-unlock"><span><b style="font-weight:500">允许在 Kindle 上开锁</b><br><small class="hint">关闭时 Kindle 只能上锁。开启后开锁需在 5 秒内再点一次确认</small></span><span class="toggle ${tile.allow_unlock ? 'on' : ''}"></span></button></div>` : ''}
+      <div class="section"><div class="actions-row"><button class="btn small" data-action="duplicate-tile">${ui('copy')}复制卡片</button>
+        <button class="btn small danger" data-action="remove-tile">${ui('trash')}从面板移除</button></div></div>`;
   }
 
   sectionView({section, page}) {
@@ -392,6 +426,7 @@ class KindlePanelEditor extends HTMLElement {
       <div class="section"><div class="actions-row">
         <button class="btn small" data-action="move-page" data-value="-1" ${pageIndex === 0 ? 'disabled' : ''}>${ui('left')}前移</button>
         <button class="btn small" data-action="move-page" data-value="1" ${pageIndex === this.draft.pages.length - 1 ? 'disabled' : ''}>${ui('right')}后移</button>
+        <button class="btn small" data-action="duplicate-page" ${this.draft.pages.length >= 8 ? 'disabled' : ''}>${ui('copy')}复制页面</button>
         <button class="btn small danger" data-action="remove-page" ${this.draft.pages.length === 1 ? 'disabled' : ''}>${ui('trash')}删除页面</button></div></div>`;
   }
 
@@ -406,7 +441,20 @@ class KindlePanelEditor extends HTMLElement {
       <div class="section"><h3>刷新与电源</h3>
         <div class="field"><span class="label">刷新间隔</span><div class="seg">${intervals.map(([v, l]) => `<button class="${d.refresh_seconds === v ? 'on' : ''}" data-action="interval" data-value="${v}">${l}</button>`).join('')}</div></div>
         <div class="field"><span class="label">常驻方式</span>${power.map(([v, title, text]) => `<button class="radio-card ${d.power_mode === v ? 'on' : ''}" data-action="power" data-value="${v}"><span class="r"></span><span><b>${title}</b><small>${text}</small></span></button>`).join('')}</div></div>
-      <div class="section"><p class="hint">Kindle 面板 ${escapeHtml(this.data.version || '')} · 背光在 Kindle 顶部的太阳按钮里调节。</p></div>`;
+      <div class="section"><h3>自动回到首页</h3><div class="field"><div class="seg">${[[0, '关闭'], [1, '1 分'], [3, '3 分'], [5, '5 分'], [10, '10 分'], [30, '30 分']].map(([v, l]) =>
+          `<button class="${d.home_timeout === v ? 'on' : ''}" data-action="home-timeout" data-value="${v}">${l}</button>`).join('')}</div>
+        <p class="hint">停留在其他页面且无人操作超过设定时间后，Kindle 自动回到第一页。</p></div></div>
+      <div class="section"><h3>夜间背光</h3>
+        <div class="field"><button class="switch-row" data-action="night-enabled"><span><b style="font-weight:500">按时间自动调暗背光</b><br><small class="hint">进入时段时记住当前亮度并调暗，结束时恢复；期间手动调节会保留到下一次切换</small></span><span class="toggle ${d.night_light.enabled ? 'on' : ''}"></span></button></div>
+        ${d.night_light.enabled ? `<div class="grid2"><div class="field"><label for="night-start">开始</label><input class="input" type="time" id="night-start" data-field="night-start" value="${escapeHtml(d.night_light.start)}"></div>
+          <div class="field"><label for="night-end">结束</label><input class="input" type="time" id="night-end" data-field="night-end" value="${escapeHtml(d.night_light.end)}"></div></div>
+        <div class="field"><span class="label">夜间亮度</span><div class="seg">${[[0, '关闭'], [5, '5%'], [10, '10%'], [20, '20%'], [30, '30%'], [50, '50%']].map(([v, l]) =>
+          `<button class="${d.night_light.level === v ? 'on' : ''}" data-action="night-level" data-value="${v}">${l}</button>`).join('')}</div>
+          <p class="hint">按 Kindle 自身的时钟执行。也可随时点 Kindle 顶部的太阳按钮手动调节。</p></div>` : ''}</div>
+      <div class="section"><h3>插件在线更新</h3>
+        <div class="field"><button class="switch-row" data-action="allow-update"><span><b style="font-weight:500">允许 Kindle 从 HA 更新插件</b><br><small class="hint">默认关闭。开启后 Kindle 菜单会出现「更新插件」，需手动确认；文件逐个校验并先备份，可一键恢复</small></span><span class="toggle ${d.allow_update ? 'on' : ''}"></span></button>
+        ${d.allow_update ? '<p class="hint error">局域网 HTTP 无法防止同一网络中的恶意设备篡改更新，只在可信的家庭网络中开启，更新完成后可再关闭。</p>' : ''}</div></div>
+      <div class="section"><p class="hint">Kindle 面板 ${escapeHtml(this.data.version || '')}</p></div>`;
   }
 
   devicesView() {
@@ -415,9 +463,10 @@ class KindlePanelEditor extends HTMLElement {
       const online = this.online(device), current = device.revision === this.data.revision;
       const preview = (this.previewDevice || devices[0]?.id) === device.id;
       return `<div class="device ${online ? '' : 'offline'} ${preview ? 'preview' : ''}"><div class="top"><span class="kico"></span>
-          <div style="flex:1;min-width:0"><b>${escapeHtml(device.name)}</b><small>${device.width}×${device.height}${preview ? ' · 预览中' : ''}</small></div>
+          <div style="flex:1;min-width:0"><b>${escapeHtml(device.name)}</b><small>${device.width}×${device.height} · 插件 ${escapeHtml(device.plugin_version || '未知')}${preview ? ' · 预览中' : ''}</small>
+            ${device.plugin_version && device.plugin_version !== this.data.version ? `<small style="display:block;color:var(--kp-warn)">插件待更新到 ${escapeHtml(this.data.version)}${this.draft.allow_update ? '，可在 Kindle 菜单中更新' : '，请用 USB 部署或在面板设置中开启在线更新'}</small>` : ''}</div>
           <span class="chip" style="height:26px"><span class="dot ${online ? '' : 'off'}"></span>${online ? '在线' : '休眠或离线'}</span></div>
-        <div class="meta"><div><span>电量</span><strong>${device.battery != null ? Math.round(device.battery) + '%' : '—'}${device.charging ? ' 充电' : ''}</strong></div>
+        <div class="meta"><div><span>电量 · 背光</span><strong>${device.battery != null ? Math.round(device.battery) + '%' : '—'}${device.charging ? '⚡' : ''} · ${device.backlight != null ? device.backlight + '%' : '—'}</strong></div>
           <div><span>最近同步</span><strong>${ago(device.last_seen)}</strong></div>
           <div><span>布局</span><strong class="${current ? '' : 'warn'}">${current ? '已是最新' : '待同步'}</strong></div></div>
         <div class="acts"><button class="btn small" data-action="preview-device" data-value="${device.id}" ${preview ? 'disabled' : ''}>设为预览尺寸</button>
@@ -525,7 +574,13 @@ class KindlePanelEditor extends HTMLElement {
 
   // ------------------------------------------------------------------ events
   onKey(event) {
-    if (!this.picker) return;
+    if (!this.picker) {
+      const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes(event.composedPath()[0]?.tagName);
+      if (!this.draft || typing || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z' && event.key.toLowerCase() !== 'y') return;
+      event.preventDefault();
+      if (event.key.toLowerCase() === 'y' || event.shiftKey) this.redo(); else this.undo();
+      return;
+    }
     const shown = this.pickerShown || [];
     if (event.key === 'Escape') { this.closePicker(); event.preventDefault(); }
     else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -544,6 +599,14 @@ class KindlePanelEditor extends HTMLElement {
       if (committed) this.renderInspector();
       return;
     }
+    if (field === 'night-start' || field === 'night-end') {
+      if (!committed || !/^\d\d:\d\d$/.test(value)) return;
+      this.draft.night_light[field === 'night-start' ? 'start' : 'end'] = value;
+      return this.changed({field});
+    }
+    // Text fields are applied on every keystroke; their blur-time `change` must not re-render the toolbar,
+    // or the button being clicked (e.g. undo) is replaced before its click lands.
+    if (committed && field.endsWith('-title')) return;
     const found = this.lookup(this.selection);
     if (field === 'tile-title') found.tile.title = value;
     else if (field === 'section-title') found.section.title = value;
@@ -556,7 +619,7 @@ class KindlePanelEditor extends HTMLElement {
       this.pageIndex = target.pageIndex;
       return this.changed({inspector: true});
     } else return;
-    this.changed();
+    this.changed({field: `${field}:${this.selection.id}`});
   }
 
   onClick(event) {
@@ -569,6 +632,41 @@ class KindlePanelEditor extends HTMLElement {
     switch (action) {
       case 'menu': this.dispatchEvent(new CustomEvent('hass-toggle-menu', {bubbles: true, composed: true})); break;
       case 'save': this.save(); break;
+      case 'undo': this.undo(); break;
+      case 'redo': this.redo(); break;
+      case 'duplicate-tile': {
+        const {tile, section, page} = found;
+        if (this.tileCount() >= 60) { this.error = '最多支持 60 张卡片'; return this.renderTop(); }
+        const spot = this.findSpot(section, page.columns, tile.w ?? 1, tile.h ?? 1);
+        if (!spot) { this.error = '这个分组没有空位放副本，请先增加分组行数'; return this.renderTop(); }
+        const copy = {...clone(tile), id: uid('tile'), ...spot};
+        section.tiles.push(copy);
+        this.selection = {type: 'tile', id: copy.id};
+        this.changed({inspector: true}); break;
+      }
+      case 'duplicate-page': {
+        const {page, pageIndex} = found;
+        const count = page.sections.reduce((n, s) => n + s.tiles.length, 0);
+        if (this.draft.pages.length >= 8 || this.tileCount() + count > 60) { this.error = '复制后会超过 8 个页面或 60 张卡片'; return this.renderTop(); }
+        const copy = clone(page);
+        copy.id = uid('page');
+        copy.title = (page.title + ' 副本').slice(0, 16);
+        for (const section of copy.sections) {
+          section.id = uid('section');
+          for (const tile of section.tiles) tile.id = uid('tile');
+        }
+        this.draft.pages.splice(pageIndex + 1, 0, copy);
+        this.pageIndex = pageIndex + 1;
+        this.selection = {type: 'page', id: copy.id};
+        this.renderAll(); this.changed({inspector: true}); break;
+      }
+      case 'lock-unlock': found.tile.allow_unlock = !found.tile.allow_unlock; this.changed({inspector: true}); break;
+      case 'home-timeout': this.draft.home_timeout = Number(value); this.changed({inspector: true}); break;
+      case 'night-enabled': this.draft.night_light.enabled = !this.draft.night_light.enabled; this.changed({inspector: true}); break;
+      case 'night-level': this.draft.night_light.level = Number(value); this.changed({inspector: true}); break;
+      case 'allow-update':
+        if (!this.draft.allow_update && !confirm('开启后，Kindle 可从 HA 下载并安装插件更新（仍需在 Kindle 菜单里手动确认）。\n\nKindle 与 HA 之间是局域网 HTTP，只建议在可信的家庭网络中开启。继续？')) return;
+        this.draft.allow_update = !this.draft.allow_update; this.changed({inspector: true}); break;
       case 'discard': this.discard(); break;
       case 'mobile-tab': this.mobileTab = value; this.renderMobileTabs(); this.renderInspector(); this.renderStage(); break;
       case 'tab': this.tab = value; this.renderInspector(); break;
@@ -769,6 +867,7 @@ class KindlePanelEditor extends HTMLElement {
       const data = await this.call('save', {layout: clone(this.draft), revision: this.data.revision, ...(this.previewDevice ? {device_id: this.previewDevice} : {})});
       Object.assign(this, {data, draft: clone(data.layout), frame: data.frame, views: data.views, dirty: false, error: '',
         notice: 'Kindle 会在下一次刷新时同步'});
+      this.resetHistory();
       if (!this.lookup(this.selection)) this.selection = this.firstSelection();
       this.renderAll();
     } catch (error) {
@@ -781,6 +880,7 @@ class KindlePanelEditor extends HTMLElement {
   discard() {
     if (!confirm('放弃所有尚未保存的修改？')) return;
     Object.assign(this, {draft: clone(this.data.layout), frame: this.data.frame, views: this.data.views, dirty: false, error: ''});
+    this.resetHistory();
     this.pageIndex = clamp(this.pageIndex, 0, this.draft.pages.length - 1);
     if (!this.lookup(this.selection)) this.selection = this.firstSelection();
     this.renderAll();

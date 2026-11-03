@@ -7,6 +7,8 @@ are "k" (black), "w" (white) and "g" (light gray), matching the generated SVG va
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 
 from .display import MODE_NAMES, number_text, section_summary, tile_view
@@ -105,21 +107,32 @@ def tile_card(cv: Canvas, card: dict, tile: dict, view: dict):
     filled = view.get("on", False) and not offline
     toggle = kind == "toggle" and not offline
     action = kind == "action" and not offline
+    extra, button = [], 0
     cv.rect(x, y, w, h, fill=WHITE, border=cv.line, color=LIGHT if offline else INK, radius=card["r"])
     value_color, title_color = (LIGHT, LIGHT) if offline else (INK, DARK)
     if (w > h * 2.1 and h < 200 * s) or h < 118 * s:
         pad = (14 if h >= 90 * s else 10) * s
         size = min(52 * s, h - 2 * pad)
         cv.badge(x + pad, y + (h - size) / 2, size, tile["icon"], filled, offline)
-        show_pill = toggle and w >= 220 * s
-        right = 80 * s if show_pill else 52 * s if action and w >= 220 * s else 0
+        dim = toggle and view.get("dimmable") and view["on"] and w >= 300 * s
+        show_pill = toggle and w >= 220 * s and not dim
+        button = min(40 * s, h - 2 * pad)
+        right = 80 * s if show_pill else 2 * button + 18 * s if dim else 52 * s if action and w >= 220 * s else 0
         left = x + pad + size + 12 * s
         room = x + w - pad - right - left
         title_size, value_size = min(18 * s, h * 0.2), min(28 * s, h * 0.3)
         cv.text(tile["title"], left, y + h / 2 - title_size - 6 * s, title_size, title_color, width=room)
-        value_size = fit_size(view["text"], view["unit"], value_size, room)
-        cv.text(view["text"], left, y + h / 2 + 2 * s, value_size, value_color, True, width=room, unit=view["unit"])
-        if show_pill:
+        unit = f"{view['brightness']}%" if dim and view.get("brightness") else view["unit"]
+        value_size = fit_size(view["text"], unit, value_size, room)
+        cv.text(view["text"], left, y + h / 2 + 2 * s, value_size, value_color, True, width=room, unit=unit)
+        if dim:
+            button_y = y + (h - button) / 2
+            plus_x = x + w - pad - button
+            minus_x = plus_x - button - 8 * s
+            cv.circle_button(minus_x, button_y, button, "minus", view.get("brightness", 100) > 10)
+            cv.circle_button(plus_x, button_y, button, "plus", view.get("brightness", 0) < 100)
+            extra = [(minus_x, button_y, -1), (plus_x, button_y, 1)]
+        elif show_pill:
             cv.pill(x + w - pad - 64 * s, y + (h - 36 * s) / 2, 64 * s, 36 * s, view["on"])
         elif right:
             size = 38 * s
@@ -136,20 +149,82 @@ def tile_card(cv: Canvas, card: dict, tile: dict, view: dict):
             button = (52 if big else 36) * s
             cv.circle_button(x + w - pad - button, y + pad + (size - button) / 2, button, "arrow", sw_icon=0.56)
         unit = view["unit"]
+        dim = toggle and view.get("dimmable") and view["on"] and w >= 240 * s and mid
+        if dim:
+            unit = f"{view['brightness']}%" if view.get("brightness") else ""
         if big:
             value_size, title_size, spacing = (54 if unit else 46) * s, 24 * s, 14 * s
         elif mid:
             value_size, title_size, spacing = (40 if unit else 34) * s, 20 * s, 8 * s
         else:
             value_size, title_size, spacing = (30 if unit else 24) * s, 17 * s, 8 * s
-        value_size = fit_size(view["text"], unit, value_size, w - 2 * pad)
+        button = (48 if big else 40) * s
+        room = w - 2 * pad - (2 * button + 22 * s if dim else 0)
+        value_size = fit_size(view["text"], unit, value_size, room)
         value_y = y + h - pad - value_size
         cv.text(tile["title"], x + pad, value_y - spacing - title_size, title_size, title_color, width=w - 2 * pad)
-        cv.text(view["text"], x + pad, value_y, value_size, value_color, True, width=w - 2 * pad, unit=unit)
+        cv.text(view["text"], x + pad, value_y, value_size, value_color, True, width=room, unit=unit)
+        if dim:
+            button_y = y + h - pad - button
+            plus_x = x + w - pad - button
+            minus_x = plus_x - button - 10 * s
+            cv.circle_button(minus_x, button_y, button, "minus", view.get("brightness", 100) > 10)
+            cv.circle_button(plus_x, button_y, button, "plus", view.get("brightness", 0) < 100)
+            extra = [(minus_x, button_y, -1), (plus_x, button_y, 1)]
     if toggle:
         cv.hit(x, y, w, h, tile=tile["id"], action="power", value=not view["on"])
+        for left, top, step in extra:
+            cv.hit(left - 4, top - 4, button + 8, button + 8, tile=tile["id"], action="brightness", value=step)
     elif action:
         cv.hit(x, y, w, h, tile=tile["id"], action="activate")
+    elif offline:
+        return
+    elif kind == "cover":
+        cv.hit(x, y, w, h, tile=tile["id"], action="cover", value="close" if view["on"] else "open")
+    elif kind == "media":
+        cv.hit(x, y, w, h, tile=tile["id"], action="media", value="play_pause")
+    elif kind == "lock":
+        if not view["on"]:
+            cv.hit(x, y, w, h, tile=tile["id"], action="lock", value=True)
+        elif tile.get("allow_unlock"):
+            cv.hit(x, y, w, h, tile=tile["id"], action="lock", value=False, confirm="再次轻触以开锁")
+
+
+COVER_SEGMENTS = (("open", "打开", None), ("stop", "暂停", None), ("close", "关闭", None))
+MEDIA_SEGMENTS = (("previous", None, "prev"), ("play_pause", None, "playpause"), ("next", None, "next"))
+
+
+def bar_card(cv: Canvas, card: dict, tile: dict, view: dict):
+    """Covers and media players: status on top, a three-button control bar at the bottom."""
+    s, x, y, w, h = cv.s, card["x"], card["y"], card["w"], card["h"]
+    if not view["available"] or h < 150 * s or w < 230 * s:
+        return tile_card(cv, card, tile, view)
+    k = min(s, h / 220, w / 330)
+    pad, badge = 20 * k + 2, 56 * k
+    cv.rect(x, y, w, h, fill=WHITE, border=cv.line, radius=card["r"])
+    cv.badge(x + pad, y + pad, badge, tile["icon"], view["on"])
+    text_x = x + pad + badge + 14 * k
+    room = x + w - pad - text_x
+    cv.text(tile["title"], text_x, y + pad + 2 * k, 20 * k, DARK, width=room)
+    status = view["text"] + (f" · {view['unit']}" if view.get("unit") else "")
+    cv.text(status, text_x, y + pad + 28 * k, 28 * k, INK, True, width=room)
+    if view.get("detail"):
+        cv.text(view["detail"], x + pad, y + pad + badge + 12 * k, 18 * k, MID, width=w - 2 * pad)
+    bar_h = 56 * k
+    bar_x, bar_y, bar_w = x + pad, y + h - pad - bar_h, w - 2 * pad
+    cv.rect(bar_x, bar_y, bar_w, bar_h, fill=WHITE, border=cv.line, radius=14 * k)
+    segments = COVER_SEGMENTS if view["kind"] == "cover" else MEDIA_SEGMENTS
+    segment = bar_w / len(segments)
+    for index, (value, label, icon) in enumerate(segments):
+        left = bar_x + index * segment
+        if index:
+            cv.rect(left, bar_y + 14 * k, 2, bar_h - 28 * k, fill=LIGHT)
+        if icon:
+            size = 30 * k
+            cv.icon(icon, left + (segment - size) / 2, bar_y + (bar_h - size) / 2, size)
+        else:
+            cv.text(label, left + segment / 2, bar_y + (bar_h - 22 * k) / 2, 22 * k, INK, align="c", width=segment - 8)
+        cv.hit(left, bar_y, segment, bar_h, tile=tile["id"], action=view["kind"], value=value)
 
 
 def visible_modes(modes: list, current: str, limit: int) -> list:
@@ -332,7 +407,7 @@ def render_page(layout: dict, index: int, views: dict, width: int, height: int) 
                     "h": round(tile["h"] * cell_h + (tile["h"] - 1) * gap), "r": round(radius)}
             cards.append(card)
             view = views[tile["id"]]
-            (climate_card if tile["kind"] == "climate" else tile_card)(cv, card, tile, view)
+            {"climate": climate_card, "cover": bar_card, "media": bar_card}.get(tile["kind"], tile_card)(cv, card, tile, view)
         cursor = grid_y + section["rows"] * cell_h + (section["rows"] - 1) * gap + section_gap
     if multi:
         tabs(cv, layout["pages"], index, width, height)
@@ -349,12 +424,15 @@ def build_views(layout: dict, states: dict, system_unit: str) -> dict:
 def snapshot(layout: dict, revision: int, states: dict, system_unit: str, width: int, height: int) -> dict:
     """The complete, self-contained frame the Kindle paints (also used by the editor preview)."""
     views = build_views(layout, states, system_unit)
+    pages = [render_page(layout, index, views, width, height) for index in range(len(layout["pages"]))]
+    fingerprint = hashlib.sha1(json.dumps(pages, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
     return {
         "protocol": PROTOCOL, "layout_version": LAYOUT_VERSION, "revision": revision,
         "refresh_seconds": layout["refresh_seconds"], "power_mode": layout["power_mode"],
         "temperature_unit": display_unit(layout, system_unit),
         "screen": {"width": width, "height": height, "scale": round(min(width / BASE_W, height / BASE_H), 4)},
-        "pages": [render_page(layout, index, views, width, height) for index in range(len(layout["pages"]))],
+        "home_timeout": layout["home_timeout"], "night_light": layout["night_light"],
+        "hash": fingerprint, "pages": pages,
         "states": {tile_id: {"available": view["available"], "state": view["state"]}
                    for tile_id, view in views.items()},
     }, views

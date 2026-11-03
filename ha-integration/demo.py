@@ -8,7 +8,7 @@ def entity(entity_id, state, name, **attributes):
 
 
 STATES = dict([
-    entity("light.living_main", "on", "客厅主灯"),
+    entity("light.living_main", "on", "客厅主灯", brightness=153, supported_color_modes=["brightness"]),
     entity("light.living_strip", "on", "客厅灯带"),
     entity("switch.floor_lamp", "off", "落地灯"),
     entity("sensor.living_temperature", "25.84", "客厅温度", unit_of_measurement="°C", device_class="temperature"),
@@ -30,10 +30,13 @@ STATES = dict([
     entity("binary_sensor.study_motion", "off", "书房有人", device_class="motion"),
     entity("button.robot_dock", "unknown", "扫地机回充"),
     entity("sensor.robot_battery", "100", "扫地机电量", unit_of_measurement="%", device_class="battery"),
+    entity("media_player.living_speaker", "playing", "客厅音箱", media_title="夜曲 · 周杰伦"),
+    entity("cover.bedroom_curtain", "open", "卧室窗帘", current_position=60),
 ])
 
 LAYOUT = {
-    "refresh_seconds": 30, "power_mode": "external-refresh", "temperature_unit": "auto",
+    "refresh_seconds": 30, "power_mode": "external-refresh", "temperature_unit": "auto", "home_timeout": 3,
+    "night_light": {"enabled": True, "start": "22:30", "end": "07:00", "level": 10},
     "pages": [
         {"id": "home", "title": "全屋", "columns": 4, "sections": [
             {"id": "living", "title": "客厅", "rows": 2, "tiles": [
@@ -50,7 +53,8 @@ LAYOUT = {
             ]},
             {"id": "entry", "title": "门口", "rows": 1, "tiles": [
                 {"id": "t9", "entity_id": "binary_sensor.front_door", "title": "入户门", "icon": "door", "w": 2},
-                {"id": "t10", "entity_id": "lock.front_door", "title": "门锁", "icon": "lock", "w": 2},
+                {"id": "t10", "entity_id": "lock.front_door", "title": "门锁", "icon": "lock", "w": 2,
+                 "allow_unlock": True},
             ]},
         ]},
         {"id": "study", "title": "书房", "columns": 3, "sections": [
@@ -68,10 +72,12 @@ LAYOUT = {
                 {"id": "t19", "entity_id": "scene.good_night", "title": "晚安", "icon": "scene"},
             ]},
         ]},
-        {"id": "scenes", "title": "场景", "columns": 2, "sections": [
+        {"id": "scenes", "title": "影音", "columns": 2, "sections": [
             {"id": "scene-list", "title": "", "rows": 3, "tiles": [
                 {"id": "t20", "entity_id": "scene.go_home", "title": "回家模式", "icon": "scene"},
                 {"id": "t21", "entity_id": "scene.good_night", "title": "晚安模式", "icon": "scene"},
+                {"id": "t22", "entity_id": "media_player.living_speaker", "title": "客厅音箱", "icon": "music", "w": 2},
+                {"id": "t23", "entity_id": "cover.bedroom_curtain", "title": "卧室窗帘", "icon": "curtain", "w": 2},
             ]},
         ]},
     ],

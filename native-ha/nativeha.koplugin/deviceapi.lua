@@ -43,7 +43,7 @@ local function validPage(page, width, height, states)
     for _, hit in ipairs(page.hits) do
         if type(hit) ~= 'table' or not box(hit, width, height) then return nil, '触控区域有误' end
         if hit.tile ~= nil and (type(hit.tile) ~= 'string' or type(states[hit.tile]) ~= 'table'
-            or type(hit.action) ~= 'string') then
+            or type(hit.action) ~= 'string' or (hit.confirm ~= nil and type(hit.confirm) ~= 'string')) then
             return nil, '触控区域有误'
         end
     end
@@ -64,6 +64,14 @@ function Client:accept(snapshot, fresh)
     local width, height = snapshot.screen.width, snapshot.screen.height
     if not number(width, 400, 2732) or not number(height, 400, 2732) or not number(snapshot.screen.scale, 0.3, 4) then
         return nil, '屏幕尺寸数据有误'
+    end
+    if (snapshot.hash ~= nil and type(snapshot.hash) ~= 'string')
+        or (snapshot.night_light ~= nil and type(snapshot.night_light) ~= 'table')
+        or (snapshot.plugin ~= nil and type(snapshot.plugin) ~= 'table')
+        or (snapshot.home_timeout ~= nil and not number(snapshot.home_timeout, 0, 1440))
+        or (snapshot.backlight_target ~= nil and (type(snapshot.backlight_target) ~= 'table'
+            or not number(snapshot.backlight_target.id, 0, 2^52) or not number(snapshot.backlight_target.level, 0, 100))) then
+        return nil, '布局设置数据有误'
     end
     for tile_id, state in pairs(snapshot.states) do
         if type(tile_id) ~= 'string' or type(state) ~= 'table' or type(state.available) ~= 'boolean' then

@@ -15,7 +15,8 @@ package.preload['device']=function()return {screen={getWidth=function()return 75
 package.preload['ui/font']=function()return {getFace=function(_,name,size)return {name=name,size=size}end}end
 package.preload['ui/geometry']=function()return class({})end
 package.preload['ui/gesturerange']=function()return class({})end
-package.preload['ui/uimanager']=function()return {setDirty=function(_,widget,mode)dirty[#dirty+1]=mode end}end
+local regions={}
+package.preload['ui/uimanager']=function()return {setDirty=function(_,widget,mode,region)dirty[#dirty+1]=mode;regions[#dirty]=region end}end
 local Text=class({})
 function Text:getSize()local n=0;for _ in tostring(self.text):gmatch('[%z\1-\127\194-\244][\128-\191]*')do n=n+1 end;return {w=n*self.face.size,h=math.floor(self.face.size*1.3)}end
 function Text:paintTo(_,x,y)painted[#painted+1]={kind='text',text=self.text,x=x,y=y}end
@@ -31,7 +32,8 @@ package.preload['ui/widget/container/inputcontainer']=function()return class({})
 -- tiny JSON decoder is unnecessary: the default frame is loaded through fengari's host JSON-free path
 local Panel=dofile('nativeha.koplugin/panelwidget.lua')
 local frame={protocol=2,revision=1,screen={width=758,height=1024,scale=1},refresh_seconds=30,
-    states={lamp={available=true,state='off'},ac={available=true,state='cool'},door={available=false,state='unavailable'}},
+    states={lamp={available=true,state='off'},ac={available=true,state='cool'},door={available=false,state='unavailable'},
+        lock={available=true,state='locked'}},
     pages={
         {id='home',title='家',
          ops={{t='r',x=20,y=128,w=351,h=268,f=255,b=2,c=0,r=18},{t='x',x=28,y=84,s=19,v='',c=110,k='status'},
@@ -41,7 +43,8 @@ local frame={protocol=2,revision=1,screen={width=758,height=1024,scale=1},refres
          hits={{x=0,y=0,w=600,h=128,['local']='refresh'},{x=670,y=18,w=67,h=76,['local']='backlight'},
                {x=20,y=128,w=351,h=268,tile='lamp',action='power',value=true},
                {x=20,y=400,w=72,h=72,tile='ac',action='temperature',value=23},
-               {x=200,y=960,w=120,h=60,['local']='page',value=1}},
+               {x=200,y=960,w=120,h=60,['local']='page',value=1},
+               {x=400,y=700,w=300,h=200,tile='lock',action='lock',value=false,confirm='再次轻触以开锁'}},
          cards={{id='lamp',x=20,y=128,w=351,h=268,r=18},{id='ac',x=20,y=400,w=718,h=268,r=18},{id='door',x=20,y=700,w=351,h=200,r=14}}},
         {id='two',title='二',ops={{t='x',x=28,y=30,s=38,v='二',b=true}},hits={},cards={}},
     }}
@@ -52,6 +55,8 @@ local panel=Panel:new{
     on_action=function(hit,pos)events[#events+1]=hit.tile..':'..hit.action..':'..tostring(hit.value)end,
     on_backlight_open=function()events[#events+1]='backlight'end,
     on_backlight=function(level)events[#events+1]='level:'..level end,
+    on_confirm=function(hit)events[#events+1]='confirm:'..hit.tile end,
+    on_interaction=function()interactions=(interactions or 0)+1 end,
 }
 panel:update(frame,{status='11月3日 已更新',battery='82%'},false)
 check(dirty[#dirty]=='ui','Normal updates use a partial refresh')
@@ -83,6 +88,18 @@ tap(10,900);check(panel.popover==nil,'Tapping outside closes the popover')
 tap(250,980);check(panel.page==1,'Footer tab switches page')
 check(dirty[#dirty]=='flashui','Page changes flash to clear ghosting')
 panel:onSwipe(nil,{direction='west'});check(panel.page==0,'Swipe wraps around pages')
+panel.page=0;panel:update(frame,{},false)
+tap(500,800);check(events[#events]=='confirm:lock','Unlocking first asks for confirmation')
+tap(500,800);check(events[#events]=='lock:lock:false','A second tap within five seconds unlocks')
+tap(500,800);check(events[#events]=='confirm:lock','Confirmation is needed again for the next unlock')
+check((interactions or 0)>=10,'Taps and swipes report user interaction')
+local counted=panel.updates
+panel:update(frame,{status='14:33 已更新'},false,nil,true)
+check(panel.updates==counted,'Status-only refreshes do not count towards the full refresh')
+check(regions[#dirty] and regions[#dirty].y<=84 and regions[#dirty].y>=60 and regions[#dirty].h<80,'Status-only refreshes repaint just the header strip')
+local fulls=0
+for _=1,12 do panel:update(frame,{},false);if dirty[#dirty]=='full' then fulls=fulls+1 end end
+check(fulls==1,'Every 12 content updates trigger exactly one full refresh')
 local before=widgets;panel:update(frame,{},false);panel:onCloseWidget()
 check(widgets<=before,'Text widgets are freed')
 print('Native panel contract: '..checks..' checks passed')

@@ -53,6 +53,10 @@ bad=snapshot();bad.pages[1].ops[2].s=99999
 check(not client:accept(bad,true),'Reject unreasonable text sizes')
 bad=snapshot();bad.states.left.available='yes'
 check(not client:accept(bad,true),'Reject malformed state')
+local good=snapshot();good.backlight_target={id=3,level=40}
+check(client:accept(good,true),'Accept a queued backlight command')
+bad=snapshot();bad.backlight_target={id=3,level=400}
+check(not client:accept(bad,true),'Reject an out-of-range backlight level')
 bad=snapshot();bad.pages={}
 check(not client:accept(bad,true),'Reject frames without pages')
 print('Scoped device API contract: '..checks..' checks passed')

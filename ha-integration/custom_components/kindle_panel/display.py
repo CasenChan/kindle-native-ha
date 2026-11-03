@@ -53,6 +53,22 @@ def tile_view(tile: dict, state: dict | None, system_unit: str, unit: str) -> di
         return view
     if kind == "toggle":
         view.update(on=raw == "on", text=ON_OFF.get(raw, raw))
+        modes = attributes.get("supported_color_modes")
+        if domain == "light" and isinstance(modes, list) and any(mode != "onoff" for mode in modes):
+            brightness = optional_number(attributes.get("brightness"))
+            view["dimmable"] = True
+            if raw == "on" and brightness is not None:
+                view["brightness"] = max(1, round(brightness / 255 * 100))
+    elif kind == "cover":
+        position = optional_number(attributes.get("current_position"))
+        view.update(on=raw in ("open", "opening"), text=DOMAIN_STATES["cover"].get(raw, raw),
+                    unit=f"{round(position)}%" if position is not None and raw == "open" else "")
+    elif kind == "media":
+        title = attributes.get("media_title")
+        view.update(on=raw in ("playing", "buffering"), text=DOMAIN_STATES["media_player"].get(raw, raw),
+                    detail=title[:40] if isinstance(title, str) else "")
+    elif kind == "lock":
+        view.update(on=raw == "locked", text=DOMAIN_STATES["lock"].get(raw, raw))
     elif kind == "action":
         view["text"] = "轻触执行"
     elif kind == "climate":
@@ -102,6 +118,8 @@ def section_summary(section: dict, views: dict) -> str:
             temperature = view["text"] + view["unit"]
         elif domain == "lock" or tile["icon"] == "lock":
             locks.append(view["text"] == "已上锁")
+        elif view["kind"] == "media" and view["on"] and len(parts) < 2:
+            parts.append("正在播放")
     if lit:
         parts.append(f"{lit} 盏灯开着")
     elif lights:
