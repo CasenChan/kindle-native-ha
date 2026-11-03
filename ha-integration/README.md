@@ -1,4 +1,4 @@
-# Kindle Panel 0.3.0
+# Kindle Panel 0.4.0
 
 自定义 Home Assistant 集成，提供侧边栏可视化编辑器、共享屏幕几何、持久布局、一次性配对和受限设备 API。
 
