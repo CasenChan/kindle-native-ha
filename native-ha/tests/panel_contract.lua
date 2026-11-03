@@ -16,7 +16,9 @@ package.preload['ui/font']=function()return {getFace=function(_,name,size)return
 package.preload['ui/geometry']=function()return class({})end
 package.preload['ui/gesturerange']=function()return class({})end
 local regions={}
-package.preload['ui/uimanager']=function()return {setDirty=function(_,widget,mode,region)dirty[#dirty+1]=mode;regions[#dirty]=region end}end
+local timers={}
+package.preload['ui/uimanager']=function()return {setDirty=function(_,widget,mode,region)dirty[#dirty+1]=mode;regions[#dirty]=region end,
+    scheduleIn=function(_,t,f)timers[#timers+1]={t=t,f=f}end,unschedule=function(_,f)for i=#timers,1,-1 do if timers[i].f==f then table.remove(timers,i)end end end}end
 local Text=class({})
 function Text:getSize()local n=0;for _ in tostring(self.text):gmatch('[%z\1-\127\194-\244][\128-\191]*')do n=n+1 end;return {w=n*self.face.size,h=math.floor(self.face.size*1.3)}end
 function Text:paintTo(_,x,y)painted[#painted+1]={kind='text',text=self.text,x=x,y=y}end
@@ -98,7 +100,23 @@ check(levels[#levels][1]==24 and levels[#levels][2]=='ui','Release settles with 
 panel:onSwipe(nil,{direction='west',distance=slider.w,pos={x=slider.x+slider.w-1,y=slider.y+slider.h/2}})
 check(levels[#levels][1]==0 and panel.page==0,'A flick along the bar sets the level instead of turning the page')
 check(not panel:onPan(nil,{pos={x=10,y=900}}),'Drags outside the bar are ignored')
+-- dragging must not repaint the whole screen
+local counted,marks=panel.updates,#dirty
+panel:queuePopover({level=3,min=0,max=24});panel:queuePopover({level=4,min=0,max=24});panel:queuePopover({level=5,min=0,max=24})
+check(#timers==1 and timers[1].t<=0.15,'Rapid drag steps coalesce into one pending repaint')
+check(#dirty==marks,'Nothing is refreshed until the throttled repaint runs')
+timers[1].f();table.remove(timers,1)
+check(#dirty==marks+1 and dirty[#dirty]=='fast','The pending repaint uses a fast refresh')
+local box=regions[#dirty]
+check(box and box.w<700 and box.h<300 and box.y>=80,'Drag repaints only the popover box, never the cards')
+check(panel.updates==counted,'Drag repaints never count towards the periodic full refresh')
+check(panel.popover.level==5,'The repaint shows the latest level')
+panel:updatePopover({level=6,min=0,max=24},'ui')
+check(dirty[#dirty]=='ui' and #timers==0 and panel.updates==counted,'Release settles the popover box only')
+local texts=0;for _,item in ipairs(panel.items)do if item.widget and item.widget.text=='6 / 24' then texts=texts+1 end end
+check(texts==1,'Old popover widgets are replaced, not stacked')
 tap(10,900);check(panel.popover==nil,'Tapping outside closes the popover')
+check(dirty[#dirty]=='flashui' and regions[#dirty] and regions[#dirty].h<400,'Closing flashes only the popover area')
 panel:onPan(nil,{pos={x=slider.x+10,y=slider.y+10}})
 check(#levels==4,'No slider without the popover')
 tap(250,980);check(panel.page==1,'Footer tab switches page')
