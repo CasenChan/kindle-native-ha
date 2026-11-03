@@ -8,5 +8,20 @@
   "home": "<path d='m3 10 9-7 9 7v11h-6v-7H9v7H3Z'/>",
   "scene": "<path d='m12 2 2.5 6.5L21 11l-6.5 2.5L12 20l-2.5-6.5L3 11l6.5-2.5Z'/><path d='m20 18 1 3m-2-1h3'/>",
   "plug": "<path d='M8 2v5m8-5v5M6 7h12v4a6 6 0 0 1-12 0ZM12 17v5'/>",
-  "sensor": "<rect x='5' y='3' width='14' height='18' rx='3'/><circle cx='12' cy='10' r='3'/><path d='M9 17h6'/>"
+  "sensor": "<rect x='5' y='3' width='14' height='18' rx='3'/><circle cx='12' cy='10' r='3'/><path d='M9 17h6'/>",
+  "door": "<path d='M5 21V4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v17M3 21h18'/><circle cx='15' cy='12' r='1'/>",
+  "window": "<rect x='4' y='3' width='16' height='18' rx='1'/><path d='M12 3v18M4 12h16'/>",
+  "lock": "<rect x='5' y='10' width='14' height='11' rx='2'/><path d='M8 10V7a4 4 0 0 1 8 0v3M12 14v3'/>",
+  "curtain": "<path d='M3 3h18M5 3v18c3-2 4-8 4-18M19 3v18c-3-2-4-8-4-18'/>",
+  "tv": "<rect x='3' y='5' width='18' height='12' rx='2'/><path d='M8 21h8M12 17v4'/>",
+  "motion": "<circle cx='13' cy='4' r='2'/><path d='m9 21 3-6 3 3v4M7 12l3-4 4 1 3 3M10 8l-1 6'/>",
+  "battery": "<rect x='3' y='7' width='16' height='10' rx='2'/><path d='M21 10v4M6 10v4M9 10v4'/>",
+  "bolt": "<path d='M13 2 5 14h6l-1 8 8-12h-6Z'/>",
+  "menu": "<path d='M4 7h16M4 12h16M4 17h16'/>",
+  "sun": "<circle cx='12' cy='12' r='4'/><path d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'/>",
+  "sun-low": "<circle cx='12' cy='12' r='3'/><path d='M12 5v1M12 18v1M5 12h1M18 12h1M7 7l.7.7M16.3 16.3l.7.7M7 17l.7-.7M16.3 7.7 17 7'/>",
+  "wifi": "<path d='M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0'/><path d='M12 19.5h.01'/>",
+  "arrow": "<path d='M5 12h14m-6-6 6 6-6 6'/>",
+  "minus": "<path d='M5 12h14'/>",
+  "plus": "<path d='M12 5v14M5 12h14'/>"
 }
