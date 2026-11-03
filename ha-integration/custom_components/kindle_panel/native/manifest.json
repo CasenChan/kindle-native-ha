@@ -1,0 +1,475 @@
+{
+ "version": "0.4.0",
+ "files": [
+  {
+   "path": "plugin/_meta.lua",
+   "bytes": 141,
+   "sha256": "8934e6fdeec2556661af0e0fd027c6d1cafbee0e8f58f75d70a859fa1ca75c4c"
+  },
+  {
+   "path": "plugin/deviceapi.lua",
+   "bytes": 5360,
+   "sha256": "a90dd12bfb57f4064893f9b3582d90375e2d515e3525b978916b955b2a21d6b5"
+  },
+  {
+   "path": "plugin/devicetransport.lua",
+   "bytes": 2209,
+   "sha256": "1ce79087c05199c6fd54a08257921e8f5a13dbc18a4c1b442f9096f185131429"
+  },
+  {
+   "path": "plugin/main.lua",
+   "bytes": 20317,
+   "sha256": "2a2687b530ab2cf19df0aad7b527ddf259b1dc54603bd04f92a7809c118eec7b"
+  },
+  {
+   "path": "plugin/panelwidget.lua",
+   "bytes": 12995,
+   "sha256": "a750343f58b9c9cf1018d66328cff32d6e18e5e1f7ce60a2a9b5babd8a6b8e9e"
+  },
+  {
+   "path": "plugin/updater.lua",
+   "bytes": 4488,
+   "sha256": "80d32be1b95166e8c041d758c01d07e8b82bdfb056f74320259db31a5450a0d6"
+  },
+  {
+   "path": "icons/arrow-g.svg",
+   "bytes": 192,
+   "sha256": "28f49d1880fdadc44bfb24035573843a18e9cec40959332691e07b91e374ceb3"
+  },
+  {
+   "path": "icons/arrow-w.svg",
+   "bytes": 189,
+   "sha256": "3535fb42525f205ab770a5e13c1f71223f91b765e2b97ccc384ef9e962699885"
+  },
+  {
+   "path": "icons/arrow.svg",
+   "bytes": 189,
+   "sha256": "6a4686d4f49edec560db3388b5fd90c9cfedc5cde5e83d2ab2e6a252c67887d8"
+  },
+  {
+   "path": "icons/battery-g.svg",
+   "bytes": 242,
+   "sha256": "413e17261828064c2c2d29499f63364ee01e11d1a98ed5d4e83bcb9a24f8652f"
+  },
+  {
+   "path": "icons/battery-w.svg",
+   "bytes": 239,
+   "sha256": "81ad5b922d82a50b2043fc6b87d6f735ef8869a54bf29cb956fbc891c8488963"
+  },
+  {
+   "path": "icons/battery.svg",
+   "bytes": 239,
+   "sha256": "a64348e5ff6e3bfd6e5e6b449c53ca2e9dac989bd358a674052f7327f2c2b01e"
+  },
+  {
+   "path": "icons/bolt-g.svg",
+   "bytes": 197,
+   "sha256": "f2c88a074726e08a78538508d39c3b060fa4929973bdb0f01d850b1ad797620d"
+  },
+  {
+   "path": "icons/bolt-w.svg",
+   "bytes": 194,
+   "sha256": "ed9b79e525c326b7f8c75ed2ce3da84f75391110397f7701e79beecd2d81e1b9"
+  },
+  {
+   "path": "icons/bolt.svg",
+   "bytes": 194,
+   "sha256": "b4d2afa184548a469197b593d9502730e91d722bc2abfe994a3bc3634b91b88d"
+  },
+  {
+   "path": "icons/bulb-g.svg",
+   "bytes": 257,
+   "sha256": "0b391ead265b94f0e93b7bc2362682cac6047b4bcb32f7e26c1fff0e6514dd49"
+  },
+  {
+   "path": "icons/bulb-w.svg",
+   "bytes": 254,
+   "sha256": "6e9a3480ca86c91efec7c55dc031daf6a67c0b316d915956828b68ac9927cc14"
+  },
+  {
+   "path": "icons/bulb.svg",
+   "bytes": 254,
+   "sha256": "3f11f927a0a1fd4f30972b182bbf8f024d0f086af9d8e00e334dcd37a3ab7e0e"
+  },
+  {
+   "path": "icons/curtain-g.svg",
+   "bytes": 220,
+   "sha256": "019abb1e09a8d0316d0e5bb2216c91246f1883431fe55b275d93e4e58e648b0c"
+  },
+  {
+   "path": "icons/curtain-w.svg",
+   "bytes": 217,
+   "sha256": "b8ae3b97dfa8612db1b6b698bf13cc5de41ff7fb381f0e290599780f5081bdcc"
+  },
+  {
+   "path": "icons/curtain.svg",
+   "bytes": 217,
+   "sha256": "9cc0a42ce1573de38bb22a5901c313cd1af94f8c12e9a648ddf3567fd341d212"
+  },
+  {
+   "path": "icons/door-g.svg",
+   "bytes": 251,
+   "sha256": "d4672a12e34851645051b0d068f9cca511c531e9e4a2150df88ce640c24284fb"
+  },
+  {
+   "path": "icons/door-w.svg",
+   "bytes": 248,
+   "sha256": "05e7b3a767f7a65417e4ab412b17230eaf9e92a7fbbfbaec04e761456d4477b7"
+  },
+  {
+   "path": "icons/door.svg",
+   "bytes": 248,
+   "sha256": "300970a9a57835b8e7d260bbccd4ca8717e01865a61f481e4b051cc52bf5965d"
+  },
+  {
+   "path": "icons/fan-g.svg",
+   "bytes": 323,
+   "sha256": "d1623a195a4c28c4bde57620b6f3899a725dc9c4fb33d71525fdf59bed6ee490"
+  },
+  {
+   "path": "icons/fan-w.svg",
+   "bytes": 320,
+   "sha256": "ffd2978f88e978cf6e92578891edcf4b2d561a44a84762a133a1d85d06ccf044"
+  },
+  {
+   "path": "icons/fan.svg",
+   "bytes": 320,
+   "sha256": "763a78be1f0e019a6713f3d149d138b3ffdd181be49464330fb50e1a0358559f"
+  },
+  {
+   "path": "icons/home-g.svg",
+   "bytes": 200,
+   "sha256": "d44fd1f0a8fea645cc42b0042cacc9beeb2706e4f6377dc244c97efa51cd835e"
+  },
+  {
+   "path": "icons/home-w.svg",
+   "bytes": 197,
+   "sha256": "15d6eae8d37c8f56f4fe6e21d6851b985687d03c15fbaebb428d34560bf1ff88"
+  },
+  {
+   "path": "icons/home.svg",
+   "bytes": 197,
+   "sha256": "6eff635f86461b6b424450499600d5deda2fbafb35673cbf1f51ab206c44dcda"
+  },
+  {
+   "path": "icons/humidity-g.svg",
+   "bytes": 251,
+   "sha256": "57a543518e8cdf4eb30440309393aa1da34ac65034abf2806e27dd36e1883c43"
+  },
+  {
+   "path": "icons/humidity-w.svg",
+   "bytes": 248,
+   "sha256": "d8f8b9ece856dbbfdc686e265d8a75744c1db94852f077ffd1afce8b3b4e67f4"
+  },
+  {
+   "path": "icons/humidity.svg",
+   "bytes": 248,
+   "sha256": "aa157d72451c4ab88c1c3ccf616b86d3f05088e0b91862b82ea623ce66d86813"
+  },
+  {
+   "path": "icons/lock-g.svg",
+   "bytes": 252,
+   "sha256": "c5fa2ea395929409b39b68f49c6110de066f61e17ddee8565559d1d45dc55574"
+  },
+  {
+   "path": "icons/lock-w.svg",
+   "bytes": 249,
+   "sha256": "cf6a9f2db3d7d6d105ab55c5b2b3ba363a6e851a4079d02543b781eb367cfa2f"
+  },
+  {
+   "path": "icons/lock.svg",
+   "bytes": 249,
+   "sha256": "75fd5859cda6d3a573300d2ab07e8291b56e8c73527611d7850e1d68d4eeb65f"
+  },
+  {
+   "path": "icons/menu-g.svg",
+   "bytes": 194,
+   "sha256": "209bfeb704533b40454157a48b301c34ed900317315051f4fd05f25dcbdf597c"
+  },
+  {
+   "path": "icons/menu-w.svg",
+   "bytes": 191,
+   "sha256": "5fd5d106250a22cf560ef9b6a750a3b34b3fe176d110532d9f9d691b7d9e9ce8"
+  },
+  {
+   "path": "icons/menu.svg",
+   "bytes": 191,
+   "sha256": "aaf6590500c7ab54734384b979ffa475f86cc9077e3bedbcf49efb50b76d8e80"
+  },
+  {
+   "path": "icons/minus-g.svg",
+   "bytes": 179,
+   "sha256": "38daae7f494bfec5603ea57e6cd753b263078d28e39095af440ddb9aec09452c"
+  },
+  {
+   "path": "icons/minus-w.svg",
+   "bytes": 176,
+   "sha256": "631c0375d15d481ec8a474c3ff8ccf9cf75c9a5cf734c4e784e4707a890e2cd0"
+  },
+  {
+   "path": "icons/minus.svg",
+   "bytes": 176,
+   "sha256": "bb207ec6df67ada0f761c243865482ddd817e24cba229b686f4a38ac95d53533"
+  },
+  {
+   "path": "icons/motion-g.svg",
+   "bytes": 243,
+   "sha256": "7a8a662052ba943cf1f5c3132af29e8929128f0a384cddf3dd053867523587b9"
+  },
+  {
+   "path": "icons/motion-w.svg",
+   "bytes": 240,
+   "sha256": "5ad95e48e65b59fa8d548786f68d0691cf9685fe9f0f740212e1ae31a7e87753"
+  },
+  {
+   "path": "icons/motion.svg",
+   "bytes": 240,
+   "sha256": "560245a2b33bfd21e286389b4a30c8711b31113e1bf68b70ec5596191da33bac"
+  },
+  {
+   "path": "icons/music-g.svg",
+   "bytes": 247,
+   "sha256": "51c4b95eaa9c2ca2a9d2c8dee8e7874ceac3a887295c82ed7c119d010be5c936"
+  },
+  {
+   "path": "icons/music-w.svg",
+   "bytes": 244,
+   "sha256": "61240e4abbb4ec90efc957ae92f060cba4c9bd83917c6969afd1a0718e5d0baf"
+  },
+  {
+   "path": "icons/music.svg",
+   "bytes": 244,
+   "sha256": "bf5b04ac6bbdeb94bc552db9c70b52353234167808514b2cc650f47349819d19"
+  },
+  {
+   "path": "icons/next-g.svg",
+   "bytes": 196,
+   "sha256": "623771947c2b0c6b5144fa86f46bab8c29b24f1a386f3d4427b74f17741b3eeb"
+  },
+  {
+   "path": "icons/next-w.svg",
+   "bytes": 193,
+   "sha256": "aa359c0a1edbdfe994626abcc0bcbcebbc31a7c78733289bc131c10d898b944c"
+  },
+  {
+   "path": "icons/next.svg",
+   "bytes": 193,
+   "sha256": "b47df67a9a1b01d155ae341660dcaa2a6aaeb87244bdb55271ae8ce51a535d74"
+  },
+  {
+   "path": "icons/playpause-g.svg",
+   "bytes": 211,
+   "sha256": "3f92ba9ce0d1ed97721cf6ba1b200285ef13c908f8e0ba847d30fbd957f978d9"
+  },
+  {
+   "path": "icons/playpause-w.svg",
+   "bytes": 208,
+   "sha256": "28227873de3f646155059eaca18d91b64b21f9048bdc688f26ddaa45a79d585c"
+  },
+  {
+   "path": "icons/playpause.svg",
+   "bytes": 208,
+   "sha256": "6e48ce75ee9aa508ffb09a4320ac4d9dd53d9b03afb396ed08e1fa9e52eed0c4"
+  },
+  {
+   "path": "icons/plug-g.svg",
+   "bytes": 216,
+   "sha256": "90d8047b15677ca3dee5e0cb0a5a147a4f16bcfac1ba013e29691657fbfc84ae"
+  },
+  {
+   "path": "icons/plug-w.svg",
+   "bytes": 213,
+   "sha256": "61e6770ee3ee7efa1b64c0444151debc6b29a6e89b798437816dab6eade53d7b"
+  },
+  {
+   "path": "icons/plug.svg",
+   "bytes": 213,
+   "sha256": "8e130d66f0bc3ab5bd967dc3b2673ffa97e57f1bfd9369e59bfe8e582ab4a211"
+  },
+  {
+   "path": "icons/plus-g.svg",
+   "bytes": 187,
+   "sha256": "7550d68a314b6e2d2fe767724cd321910b9e7614a5d5952335408a2fb71a59f2"
+  },
+  {
+   "path": "icons/plus-w.svg",
+   "bytes": 184,
+   "sha256": "92a6fc123f4d093d20f9b7ca48d2d6ab687c5b9b4176fbc663990549587e19a2"
+  },
+  {
+   "path": "icons/plus.svg",
+   "bytes": 184,
+   "sha256": "3ae5cddd1151b9db9445cc320a83ff2f1de58535e50f3c0e0f2957bc5f754b52"
+  },
+  {
+   "path": "icons/power-g.svg",
+   "bytes": 198,
+   "sha256": "99ab59aacd6f7dd1ab64e3fc2fc1d6f4141e9c3887f304f167e6ee81f1507a66"
+  },
+  {
+   "path": "icons/power-w.svg",
+   "bytes": 195,
+   "sha256": "2c90bb9b9421a4cda2aff29ebdad95f4a84aa70e7544af97559715f054059948"
+  },
+  {
+   "path": "icons/power.svg",
+   "bytes": 195,
+   "sha256": "eb4c8ed3a41f724a34b07a232fc6b7b4cd10bf46bedb845ce3d5da64d42019d2"
+  },
+  {
+   "path": "icons/prev-g.svg",
+   "bytes": 198,
+   "sha256": "b78bb2b33862c9e3968039b6eb52ae66df71b1609d464ceb69d736b06d722ec2"
+  },
+  {
+   "path": "icons/prev-w.svg",
+   "bytes": 195,
+   "sha256": "3883545c419e3ee8c42d82ff4f05279c0c140f6d22481657ea260ae96386888d"
+  },
+  {
+   "path": "icons/prev.svg",
+   "bytes": 195,
+   "sha256": "cb5a427c606c53d93a094f82a87048b1edc6c8fc4d470843aaf8ef5298a3565a"
+  },
+  {
+   "path": "icons/scene-g.svg",
+   "bytes": 257,
+   "sha256": "cd9c9296660f81ca70fa181fdf5fcfa0ba9ea05ecca791699bc9afd368331083"
+  },
+  {
+   "path": "icons/scene-w.svg",
+   "bytes": 254,
+   "sha256": "f28a5c7a804d4915a3291942145ad6f4ef6524332453ac22f0d368f25bd83873"
+  },
+  {
+   "path": "icons/scene.svg",
+   "bytes": 254,
+   "sha256": "6056a316ee34fdf691bac8dc093654d5cc9fbcf8b2778a1d4acb108b8ed46a01"
+  },
+  {
+   "path": "icons/sensor-g.svg",
+   "bytes": 258,
+   "sha256": "eb0596c1cd122789a15db0376c8528743b56aca77f998004a144b93050ab233d"
+  },
+  {
+   "path": "icons/sensor-w.svg",
+   "bytes": 255,
+   "sha256": "2f03817a0d44d189c10b846eeabaf1f3b7abb92b7f4de82a3bbfe7d3b93c2cf3"
+  },
+  {
+   "path": "icons/sensor.svg",
+   "bytes": 255,
+   "sha256": "d967a9c01ce6462bfbe9a60c1bde992055e3e6bc832e7585b29c7fca0c924026"
+  },
+  {
+   "path": "icons/sun-g.svg",
+   "bytes": 300,
+   "sha256": "5c701a7226938373f76ce1851cfd88124c02d0799e202bea9f865c8e79596af6"
+  },
+  {
+   "path": "icons/sun-low-g.svg",
+   "bytes": 281,
+   "sha256": "fb489d9211543f6b2ee2b1259c789d71edd6eb0c4057390857ba63f6246599f1"
+  },
+  {
+   "path": "icons/sun-low-w.svg",
+   "bytes": 278,
+   "sha256": "6ebfc67e5bd3fc89e0995d4eb0022fe069e52fd66b8732d071fbe50076162c43"
+  },
+  {
+   "path": "icons/sun-low.svg",
+   "bytes": 278,
+   "sha256": "82f4b831b74cd1749b4d58b7a994e5b0f99020b19054fadd4b33f084313442c9"
+  },
+  {
+   "path": "icons/sun-w.svg",
+   "bytes": 297,
+   "sha256": "f7c5f33edfbc9849e8c7074381e02220889f203074f60ac9a8969416515a389b"
+  },
+  {
+   "path": "icons/sun.svg",
+   "bytes": 297,
+   "sha256": "412e26aa1d8eddcd838331d93c1e96006f89371e9e7960f0a01474ba6bec9ad4"
+  },
+  {
+   "path": "icons/temperature-g.svg",
+   "bytes": 266,
+   "sha256": "3d11156cd3a2843782a29bfccf8a1cdcc96d8c92ed1dc23d108d421730654855"
+  },
+  {
+   "path": "icons/temperature-w.svg",
+   "bytes": 263,
+   "sha256": "12250ab867210dc2edc8efe37c86557ad46fa46aef9ca7bca0a5fe04221fe359"
+  },
+  {
+   "path": "icons/temperature.svg",
+   "bytes": 263,
+   "sha256": "4e6e6fb0e18f33fb85220a8b036f546462de3aa2be9ecb1295bfe761bc926de2"
+  },
+  {
+   "path": "icons/thermostat-g.svg",
+   "bytes": 231,
+   "sha256": "ceb446aba3514c766f78e8872419d87eaab5d0ebd1e987d6fbc27bfacca4a9bf"
+  },
+  {
+   "path": "icons/thermostat-w.svg",
+   "bytes": 228,
+   "sha256": "a0303c251e646378b8855a4b17ffac8ab39ba6e7394ca9771dbd4a147ec6cb5e"
+  },
+  {
+   "path": "icons/thermostat.svg",
+   "bytes": 228,
+   "sha256": "986bae43280255096d9731ceba91b3c000eb0cb8ed3e927a5da7c722ae0fe930"
+  },
+  {
+   "path": "icons/tv-g.svg",
+   "bytes": 235,
+   "sha256": "9c6df10519c14f625051cbfdd86211630a716d950b44c2b5c9a6c8ad3569dffc"
+  },
+  {
+   "path": "icons/tv-w.svg",
+   "bytes": 232,
+   "sha256": "d792532b56c8ca20a86043dc7fb6bd0832eb0bb7a3013230b089422b4025b403"
+  },
+  {
+   "path": "icons/tv.svg",
+   "bytes": 232,
+   "sha256": "576b017949eb7abedcb55e74c72114b5144c3176068704c4e3feb2421def47a8"
+  },
+  {
+   "path": "icons/wifi-g.svg",
+   "bytes": 261,
+   "sha256": "6bb5a162b070d381da1e92fa0900cbe78b63d523f59a47db18fc42092a0af864"
+  },
+  {
+   "path": "icons/wifi-w.svg",
+   "bytes": 258,
+   "sha256": "f31883366233537fee910a1a4b183f988439903dcd1249fead21b6a9e1918b9f"
+  },
+  {
+   "path": "icons/wifi.svg",
+   "bytes": 258,
+   "sha256": "d5992ec44421832e648e462c634047bbe777fe4191f8577f70ed7fa59215b9e0"
+  },
+  {
+   "path": "icons/window-g.svg",
+   "bytes": 236,
+   "sha256": "0399a6e3837de3792ea584d9ffadc6bc50f3a7fb5bf1a369d0116b254b396c36"
+  },
+  {
+   "path": "icons/window-w.svg",
+   "bytes": 233,
+   "sha256": "5046cdfc4a9f64816877baa70ca89cf07e666d23c0277bab37bb5b9911e2c81c"
+  },
+  {
+   "path": "icons/window.svg",
+   "bytes": 233,
+   "sha256": "6467fdf792b1e57f9c00556f24d9b59d3585c20d5d9348f081c1501e5aee8a93"
+  },
+  {
+   "path": "default-snapshot.json",
+   "bytes": 3066,
+   "sha256": "cc0f58cfc1e6baece03fd3abbd40e45d00062f28eaddaf307af3e81eed48df9f"
+  }
+ ]
+}
