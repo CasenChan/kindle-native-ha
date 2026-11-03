@@ -35,6 +35,8 @@ function Panel:init()
         Tap = { GestureRange:new{ ges='tap', range=self.dimen } },
         Swipe = { GestureRange:new{ ges='swipe', range=self.dimen } },
         Hold = { GestureRange:new{ ges='hold', range=self.dimen } },
+        Pan = { GestureRange:new{ ges='pan', range=self.dimen } },
+        PanRelease = { GestureRange:new{ ges='pan_release', range=self.dimen } },
     }
 end
 
@@ -194,6 +196,8 @@ function Panel:buildPopover()
     hit(x + w - 24 * s - bs, by, bs, bs, math.min(light.max, light.level + step))
     local sx = x + 24 * s + bs + 18 * s
     local sw = w - 2 * (24 * s + bs + 18 * s)
+    -- Dragging or flicking anywhere on this row sets the level from the finger position.
+    self.slider = { x=sx, y=by - 10 * s, w=sw, h=bs + 20 * s, max=light.max }
     local gap = 6 * s
     local seg = (sw - gap * (LIGHT_STEPS - 1)) / LIGHT_STEPS
     local filled = math.floor(light.level / light.max * LIGHT_STEPS + 0.5)
@@ -241,7 +245,8 @@ end
 
 function Panel:onTap(_, gesture)
     if not self.snapshot then return true end
-    if self.on_interaction then self.on_interaction() end
+    -- With touch-to-light, the tap that wakes a dark screen only turns the light on.
+    if self.on_interaction and self.on_interaction() then return true end
     local pos = gesture.pos
     if self.popover then
         local p = self:popoverGeometry()
@@ -288,9 +293,42 @@ function Panel:onTap(_, gesture)
     return true
 end
 
+function Panel:sliderLevel(x)
+    local slider = self.slider
+    local fraction = math.max(0, math.min(1, (x - slider.x) / slider.w))
+    return math.floor(fraction * slider.max + 0.5)
+end
+
+-- Live drag on the backlight bar: apply on every step change with a fast (A2) refresh, settle on release.
+function Panel:onPan(_, gesture)
+    if not (self.popover and self.slider) then return false end
+    local pos = gesture.pos
+    if not self.sliding then
+        if not inside(self.slider, pos) then return false end
+        self.sliding = true
+    end
+    local level = self:sliderLevel(pos.x)
+    if level ~= self.popover.level then self.on_backlight(level, 'fast') end
+    return true
+end
+
+function Panel:onPanRelease(_, gesture)
+    if not self.sliding then return false end
+    self.sliding = false
+    self.on_backlight(self:sliderLevel(gesture.pos.x), 'ui')
+    return true
+end
+
 function Panel:onSwipe(_, gesture)
+    if self.popover and self.slider and inside(self.slider, gesture.pos) then
+        -- A quick flick along the bar ends where the finger left the screen.
+        local finish = gesture.end_pos and gesture.end_pos.x
+            or gesture.pos.x + (gesture.direction == 'east' and 1 or gesture.direction == 'west' and -1 or 0) * (gesture.distance or 0)
+        self.on_backlight(self:sliderLevel(finish), 'ui')
+        return true
+    end
     if self.popover or not self.snapshot then return true end
-    if self.on_interaction then self.on_interaction() end
+    if self.on_interaction and self.on_interaction() then return true end
     if gesture.direction == 'west' then self:goPage(self.page + 1)
     elseif gesture.direction == 'east' then self:goPage(self.page - 1) end
     return true

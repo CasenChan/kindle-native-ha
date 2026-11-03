@@ -56,7 +56,7 @@ local panel=Panel:new{
     on_backlight_open=function()events[#events+1]='backlight'end,
     on_backlight=function(level)events[#events+1]='level:'..level end,
     on_confirm=function(hit)events[#events+1]='confirm:'..hit.tile end,
-    on_interaction=function()interactions=(interactions or 0)+1 end,
+    on_interaction=function()interactions=(interactions or 0)+1;return swallow end,
 }
 panel:update(frame,{status='11月3日 已更新',battery='82%'},false)
 check(dirty[#dirty]=='ui','Normal updates use a partial refresh')
@@ -84,7 +84,23 @@ tap(700,40);check(events[#events]=='backlight','Sun button opens the backlight p
 panel.popover={level=12,min=0,max=24}
 panel:update(frame,{},false)
 tap(420,290);check(events[#events]:match('^level:'),'Popover presets set a level')
+local slider=panel.slider
+check(slider and slider.w>200,'The popover exposes a draggable bar')
+local levels={}
+panel.on_backlight=function(level,mode)levels[#levels+1]={level,mode};panel.popover.level=level end
+panel:onPan(nil,{pos={x=slider.x+slider.w*0.25,y=slider.y+slider.h/2}})
+panel:onPan(nil,{pos={x=slider.x+slider.w*0.5,y=slider.y+slider.h/2}})
+check(#levels==2 and levels[1][1]==6 and levels[2][1]==12 and levels[2][2]=='fast','Dragging adjusts live with fast refresh')
+panel:onPan(nil,{pos={x=slider.x+slider.w*0.5+1,y=slider.y+slider.h/2}})
+check(#levels==2,'No refresh while the level does not change')
+panel:onPanRelease(nil,{pos={x=slider.x+slider.w+80,y=slider.y}})
+check(levels[#levels][1]==24 and levels[#levels][2]=='ui','Release settles with a clean refresh, clamped to the maximum')
+panel:onSwipe(nil,{direction='west',distance=slider.w,pos={x=slider.x+slider.w-1,y=slider.y+slider.h/2}})
+check(levels[#levels][1]==0 and panel.page==0,'A flick along the bar sets the level instead of turning the page')
+check(not panel:onPan(nil,{pos={x=10,y=900}}),'Drags outside the bar are ignored')
 tap(10,900);check(panel.popover==nil,'Tapping outside closes the popover')
+panel:onPan(nil,{pos={x=slider.x+10,y=slider.y+10}})
+check(#levels==4,'No slider without the popover')
 tap(250,980);check(panel.page==1,'Footer tab switches page')
 check(dirty[#dirty]=='flashui','Page changes flash to clear ghosting')
 panel:onSwipe(nil,{direction='west'});check(panel.page==0,'Swipe wraps around pages')
@@ -100,6 +116,8 @@ check(regions[#dirty] and regions[#dirty].y<=84 and regions[#dirty].y>=60 and re
 local fulls=0
 for _=1,12 do panel:update(frame,{},false);if dirty[#dirty]=='full' then fulls=fulls+1 end end
 check(fulls==1,'Every 12 content updates trigger exactly one full refresh')
+swallow=true;count=#events;tap(100,200)
+check(#events==count,'The tap that wakes the backlight does nothing else');swallow=false
 local before=widgets;panel:update(frame,{},false);panel:onCloseWidget()
 check(widgets<=before,'Text widgets are freed')
 print('Native panel contract: '..checks..' checks passed')

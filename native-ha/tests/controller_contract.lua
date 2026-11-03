@@ -19,7 +19,7 @@ package.preload['device']=function()return {hasFrontlight=function()return true 
 package.preload['ui/uimanager']=function()return {scheduleIn=function(_,t,f)scheduled[#scheduled+1]={t=t,f=f}end,
     unschedule=function()end,forceRePaint=function()end,show=function()end,nextTick=function()end}end
 package.preload['ui/widget/buttondialog']=function()return class()end
-package.preload['ui/widget/infomessage']=function()return class()end
+package.preload['ui/widget/infomessage']=function()local c=class();function c:new(f)return f end;return c end
 package.preload['ui/widget/container/widgetcontainer']=function()return class()end
 package.preload['pluginshare']=function()return {}end
 package.preload['json']=function()return {encode=function()return '{}'end,decode=function()return {}end}end
@@ -68,5 +68,33 @@ ha.last_interaction=os.time()-200;ha:returnHome();check(ha.panel.page==0,'Return
 check(renders[#renders]=='flashui','Returning home flashes to clear ghosting')
 ha.client.snapshot={home_timeout=0};ha.panel.page=1;ha.last_interaction=0;ha:returnHome()
 check(ha.panel.page==1,'Timeout 0 disables returning home')
+-- touch-to-light
+scheduled={};light.on,light.level=true,16
+ha.client.snapshot={touch_light={enabled=true,timeout=30}}
+ha:syncTouchLight()
+check(scheduled[#scheduled].t==30,'Enabling touch-to-light starts the idle timer')
+ha:goDark()
+check(not light.on and ha.auto_dark,'The light goes off after the idle time')
+check(ha:deviceInfo().backlight==67,'HA keeps seeing the level a touch restores, not 0')
+ha.client.snapshot.backlight_target={id=9,level=25};ha:applyRemoteBacklight()
+check(not light.on and ha.wake_level==6,'An HA command while dark changes the wake level without lighting up')
+ha.client.snapshot.backlight_target=nil
+check(ha:noteInteraction()==true and light.on and light.level==6,'A touch wakes the light at the wake level and is swallowed')
+check(ha:noteInteraction()==false,'Later touches act normally')
+ha.panel.popover={};ha:goDark()
+check(light.on,'The light stays on while the backlight popover is open');ha.panel.popover=nil
+ha:goDark();ha.client.snapshot={touch_light={enabled=false,timeout=30}};ha:syncTouchLight()
+check(light.on and light.level==6 and not ha.auto_dark,'Turning the feature off restores the light')
+
+-- plugin update explanations
+local shown
+package.loaded['ui/uimanager'].show=function(_,widget)shown=widget.text end
+ha.version='0.5.0';ha.client.online=true
+ha.client.snapshot={plugin={version='0.5.0',update=false,allowed=false}};ha:explainUpdate()
+check(shown:find('尚未开启'),'Explain that HA has updates switched off')
+ha.client.snapshot={plugin={version='0.5.0',update=false,allowed=true}};ha:explainUpdate()
+check(shown:find('已是最新'),'Explain that the plugin is current')
+ha.client.snapshot={};ha:explainUpdate()
+check(shown:find('过旧'),'Explain that the HA integration is too old')
 print('Controller contract: '..checks..' checks passed')
 io.open,os.date=real_open,real_date
