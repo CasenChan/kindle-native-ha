@@ -490,7 +490,7 @@ class KindlePanelEditor extends HTMLElement {
   // ------------------------------------------------------------------ entity picker
   openPicker(mode, sectionId) {
     this.picker = {mode, sectionId, query: '', filter: 'all', index: 0};
-    this.renderPicker();
+    this.renderPicker({resetScroll: true});
     this.shadowRoot.querySelector('#picker-search')?.focus();
   }
   closePicker() { this.picker = null; this.shadowRoot.querySelector('#dialog').innerHTML = ''; }
@@ -510,9 +510,12 @@ class KindlePanelEditor extends HTMLElement {
     return {shown: shown.slice(0, 300), counts, total: shown.length};
   }
 
-  renderPicker() {
+  renderPicker({resetScroll = false, reveal = false} = {}) {
     const box = this.shadowRoot.querySelector('#dialog');
     if (!this.picker) { box.innerHTML = ''; return; }
+    // HA updates can arrive while the user browses the results. Keep their
+    // position instead of replacing the scroller and revealing the first row.
+    const scrollTop = box.querySelector('#picker-results')?.scrollTop || 0;
     const {shown, counts, total} = this.pickerEntries();
     this.picker.index = clamp(this.picker.index, 0, Math.max(0, shown.length - 1));
     this.pickerShown = shown;
@@ -546,7 +549,8 @@ class KindlePanelEditor extends HTMLElement {
         <label class="search">${ui('search')}<input id="picker-search" data-field="picker-search" placeholder="搜索名称、实体 ID 或区域" autocomplete="off"></label>
         <div id="picker-body" style="display:flex;flex-direction:column;min-height:0;flex:1">${html}</div></div></div>`;
     }
-    box.querySelector('.res.hl')?.scrollIntoView({block: 'nearest'});
+    box.querySelector('#picker-results').scrollTop = resetScroll ? 0 : scrollTop;
+    if (reveal) box.querySelector('.res.hl')?.scrollIntoView({block: 'nearest'});
   }
 
   pick(entityId) {
@@ -590,7 +594,7 @@ class KindlePanelEditor extends HTMLElement {
     if (event.key === 'Escape') { this.closePicker(); event.preventDefault(); }
     else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       this.picker.index = clamp(this.picker.index + (event.key === 'ArrowDown' ? 1 : -1), 0, shown.length - 1);
-      this.renderPicker(); event.preventDefault();
+      this.renderPicker({reveal: true}); event.preventDefault();
     } else if (event.key === 'Enter' && shown[this.picker.index]) { this.pick(shown[this.picker.index].id); event.preventDefault(); }
   }
 
@@ -598,7 +602,7 @@ class KindlePanelEditor extends HTMLElement {
     const field = event.target.dataset?.field;
     if (!field) return;
     const value = event.target.value;
-    if (field === 'picker-search') { if (!this.picker) return; this.picker.query = value; this.picker.index = 0; return this.renderPicker(); }
+    if (field === 'picker-search') { if (!this.picker) return; this.picker.query = value; this.picker.index = 0; return this.renderPicker({resetScroll: true}); }
     if (field === 'pair-url') {
       this.pairUrl = value;
       if (committed) this.renderInspector();
@@ -706,7 +710,7 @@ class KindlePanelEditor extends HTMLElement {
         this.openPicker('add', value); break;
       case 'change-entity': this.openPicker('replace'); break;
       case 'picker-close': this.closePicker(); break;
-      case 'picker-filter': this.picker.filter = value; this.picker.index = 0; this.renderPicker(); break;
+      case 'picker-filter': this.picker.filter = value; this.picker.index = 0; this.renderPicker({resetScroll: true}); break;
       case 'pick': this.pick(value); break;
       case 'tile-icon': found.tile.icon = value; this.changed({inspector: true}); break;
       case 'tile-w': case 'tile-h': {
