@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 
 from .display import MODE_NAMES, number_text, section_summary, tile_view
 from .protocol import LAYOUT_VERSION, display_unit, iter_tiles
@@ -22,6 +23,20 @@ PROTOCOL = 2
 def text_width(text: str, size: float) -> float:
     """Rough advance width (CJK = 1em, Latin ≈ 0.56em) for spacing and fitting decisions."""
     return sum(size if ord(char) > 0x2E7F else size * 0.56 for char in text)
+
+
+def wrap_text(text: str, size: float, width: float, lines: int) -> list[str]:
+    """Greedy line breaking on estimated widths; Latin words stay whole, CJK breaks anywhere.
+    The last line keeps any overflow and is ellipsised by the client."""
+    out, current = [], ""
+    for token in re.findall(r"[A-Za-z0-9.,%°'\-]+|\s+|.", text):
+        if current.strip() and text_width((current + token).strip(), size) > width and len(out) < lines - 1:
+            out.append(current.strip())
+            current = token.lstrip()
+        else:
+            current += token
+    out.append(current.strip())
+    return [line for line in out if line]
 
 
 def fit_size(text: str, unit: str, size: float, room: float, minimum: float = 14) -> float:
@@ -115,9 +130,9 @@ def tile_card(cv: Canvas, card: dict, tile: dict, view: dict):
         size = min(52 * s, h - 2 * pad)
         cv.badge(x + pad, y + (h - size) / 2, size, tile["icon"], filled, offline)
         dim = toggle and view.get("dimmable") and view["on"] and w >= 300 * s
-        show_pill = toggle and w >= 220 * s and not dim
+        show_pill = toggle and w >= 260 * s and not dim
         button = min(40 * s, h - 2 * pad)
-        right = 80 * s if show_pill else 2 * button + 18 * s if dim else 52 * s if action and w >= 220 * s else 0
+        right = 80 * s if show_pill else 2 * button + 18 * s if dim else 52 * s if action and w >= 260 * s else 0
         left = x + pad + size + 12 * s
         room = x + w - pad - right - left
         title_size, value_size = min(18 * s, h * 0.2), min(28 * s, h * 0.3)
@@ -160,10 +175,25 @@ def tile_card(cv: Canvas, card: dict, tile: dict, view: dict):
             value_size, title_size, spacing = (30 if unit else 24) * s, 17 * s, 8 * s
         button = (48 if big else 40) * s
         room = w - 2 * pad - (2 * button + 22 * s if dim else 0)
-        value_size = fit_size(view["text"], unit, value_size, room)
-        value_y = y + h - pad - value_size
+        lines = [view["text"]]
+        fitted = fit_size(view["text"], unit, value_size, room)
+        if not unit and fitted < value_size * 0.75:
+            # Long words (e.g. weather text): wrap onto two lines when the card is tall enough.
+            smaller = max(16 * s, value_size * 0.7)
+            for count in (2, 3):
+                wrapped = wrap_text(view["text"], smaller, room, count)
+                needed = pad + size + 8 * s + title_size + spacing + (1.2 * count - 0.2) * smaller + pad
+                if needed > h:
+                    break
+                lines, fitted = wrapped, smaller
+                if text_width(wrapped[-1], smaller) <= room:
+                    break
+        value_size = fitted
+        value_y = y + h - pad - value_size - (len(lines) - 1) * value_size * 1.2
         cv.text(tile["title"], x + pad, value_y - spacing - title_size, title_size, title_color, width=w - 2 * pad)
-        cv.text(view["text"], x + pad, value_y, value_size, value_color, True, width=room, unit=unit)
+        for index, line in enumerate(lines):
+            cv.text(line, x + pad, value_y + index * value_size * 1.2, value_size, value_color, True, width=room,
+                    unit=unit if index == len(lines) - 1 else None)
         if dim:
             button_y = y + h - pad - button
             plus_x = x + w - pad - button
@@ -197,6 +227,30 @@ MEDIA_SEGMENTS = (("previous", None, "prev"), ("play_pause", None, "playpause"),
 def bar_card(cv: Canvas, card: dict, tile: dict, view: dict):
     """Covers and media players: status on top, a three-button control bar at the bottom."""
     s, x, y, w, h = cv.s, card["x"], card["y"], card["w"], card["h"]
+    segments = COVER_SEGMENTS if view["kind"] == "cover" else MEDIA_SEGMENTS
+    if view["available"] and h < 150 * s and w >= 520 * s:
+        # Short, wide card (list layouts): status on the left, three round buttons on the right.
+        k = min(s, h / 110)
+        pad = 12 * k
+        badge = min(56 * s, h - 2 * pad)
+        cv.rect(x, y, w, h, fill=WHITE, border=cv.line, radius=card["r"])
+        cv.badge(x + pad, y + (h - badge) / 2, badge, tile["icon"], view["on"])
+        button = min(h - 2 * pad, 56 * s)
+        gap = 10 * k
+        first = x + w - pad - 3 * button - 2 * gap
+        text_x = x + pad + badge + 12 * k
+        room = first - text_x - 10 * k
+        status = view["text"] + (f" · {view['unit']}" if view.get("unit") else "")
+        cv.text(tile["title"], text_x, y + h / 2 - 24 * k, max(15, 18 * k), DARK, width=room)
+        cv.text(status, text_x, y + h / 2 + 2 * k, max(16, 24 * k), INK, True, width=room)
+        for index, (value, label, icon) in enumerate(segments):
+            left = first + index * (button + gap)
+            top = y + (h - button) / 2
+            cv.rect(left, top, button, button, fill=WHITE, border=cv.line, radius=button / 2)
+            icon = icon or {"open": "up", "stop": "stop", "close": "down"}[value]
+            cv.icon(icon, left + button * 0.24, top + button * 0.24, button * 0.52)
+            cv.hit(left - gap / 2, y, button + gap, h, tile=tile["id"], action=view["kind"], value=value)
+        return
     if not view["available"] or h < 150 * s or w < 230 * s:
         return tile_card(cv, card, tile, view)
     k = min(s, h / 220, w / 330)
@@ -213,7 +267,6 @@ def bar_card(cv: Canvas, card: dict, tile: dict, view: dict):
     bar_h = 56 * k
     bar_x, bar_y, bar_w = x + pad, y + h - pad - bar_h, w - 2 * pad
     cv.rect(bar_x, bar_y, bar_w, bar_h, fill=WHITE, border=cv.line, radius=14 * k)
-    segments = COVER_SEGMENTS if view["kind"] == "cover" else MEDIA_SEGMENTS
     segment = bar_w / len(segments)
     for index, (value, label, icon) in enumerate(segments):
         left = bar_x + index * segment
@@ -303,7 +356,28 @@ def climate_card(cv: Canvas, card: dict, tile: dict, view: dict):
                         WHITE if current_mode else INK, current_mode, align="c", width=segment - 8)
                 if not current_mode:
                     cv.hit(left, bar_y, segment, bar_h, tile=tile["id"], action="mode", value=mode)
-    elif w >= 330 * s:
+    elif h >= 150 * s and w >= 230 * s:
+        # Stacked compact: status row on top, a full-width  −  target  +  row below (no mode bar).
+        k = min(s, h / 190, w / 330)
+        pad = 16 * k + 2
+        badge = 48 * k
+        cv.badge(x + pad, y + pad, badge, tile["icon"], on)
+        cv.hit(x + pad - 6, y + pad - 6, badge + 12, badge + 12, tile=tile["id"], action="power", value=not on)
+        text_x = x + pad + badge + 12 * k
+        room = x + w - pad - text_x
+        cv.text(tile["title"], text_x, y + pad, max(15, 21 * k), INK, True, width=room)
+        cv.text(f"{status} · 室内 {current_text}{unit}", text_x, y + pad + 28 * k, max(14, 16 * k), MID, width=room)
+        button = min(64 * k, h - (badge + 3 * pad + 8 * k))
+        button_y = y + h - pad - button
+        cv.circle_button(x + pad, button_y, button, "minus", can_down)
+        cv.circle_button(x + w - pad - button, button_y, button, "plus", can_up)
+        zone = w - 2 * pad - 2 * button - 16 * k
+        size = fit_size(target_text, unit, min(48 * k, button * 0.85), zone)
+        cv.text(target_text, x + w / 2, button_y + (button - size) / 2, size, INK if on else LIGHT, True,
+                align="c", width=zone, unit=unit if on and target is not None else None)
+        temperature_hits(x + pad, button_y, x + w - pad - button, button_y, button)
+    elif w >= 520 * s:
+        # Inline compact for short, wide cards: badge · title/status · − target +
         k = min(s, h / 110)
         pad = 12 * k
         badge = min(56 * s, h - 2 * pad)
@@ -321,8 +395,8 @@ def climate_card(cv: Canvas, card: dict, tile: dict, view: dict):
         temperature_hits(minus_x, button_y, plus_x, button_y, button)
         text_x = x + pad + badge + 12 * k
         room = minus_x - text_x - 8 * k
-        cv.text(tile["title"], text_x, y + h / 2 - 24 * k, 20 * k, INK, True, width=room)
-        cv.text(f"{status} · 室内 {current_text}{unit}", text_x, y + h / 2 + 4 * k, 16 * k, MID, width=room)
+        cv.text(tile["title"], text_x, y + h / 2 - 24 * k, max(15, 20 * k), INK, True, width=room)
+        cv.text(f"{status} · 室内 {current_text}{unit}", text_x, y + h / 2 + 4 * k, max(14, 16 * k), MID, width=room)
     else:
         tile_card(cv, card, tile, {**view, "kind": "climate-tiny", "text": target_text if on else "关机",
                                     "unit": unit if on and target is not None else ""})
@@ -432,6 +506,7 @@ def snapshot(layout: dict, revision: int, states: dict, system_unit: str, width:
         "temperature_unit": display_unit(layout, system_unit),
         "screen": {"width": width, "height": height, "scale": round(min(width / BASE_W, height / BASE_H), 4)},
         "home_timeout": layout["home_timeout"], "night_light": layout["night_light"],
+        "touch_light": layout["touch_light"],
         "hash": fingerprint, "pages": pages,
         "states": {tile_id: {"available": view["available"], "state": view["state"]}
                    for tile_id, view in views.items()},

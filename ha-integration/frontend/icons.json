@@ -27,5 +27,8 @@
   "plus": "<path d='M12 5v14M5 12h14'/>",
   "prev": "<path d='M19 20 9 12l10-8v16ZM5 19V5'/>",
   "next": "<path d='m5 4 10 8-10 8V4ZM19 5v14'/>",
-  "playpause": "<path d='M4 5v14l8-7Z'/><path d='M16 5v14M20 5v14'/>"
+  "playpause": "<path d='M4 5v14l8-7Z'/><path d='M16 5v14M20 5v14'/>",
+  "up": "<path d='M12 19V5m-6 6 6-6 6 6'/>",
+  "down": "<path d='M12 5v14m-6-6 6 6 6-6'/>",
+  "stop": "<rect x='7' y='7' width='10' height='10' rx='1.5'/>"
 }

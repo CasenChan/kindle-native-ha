@@ -10,7 +10,7 @@ import secrets
 import time
 
 DOMAIN = "kindle_panel"
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 LAYOUT_VERSION = 2
 ICONS = ("bulb", "thermostat", "temperature", "humidity", "power", "fan", "home", "scene", "plug", "sensor",
          "door", "window", "lock", "curtain", "tv", "motion", "battery", "bolt", "music")
@@ -25,6 +25,8 @@ MEDIA_ACTIONS = {"play_pause": "media_play_pause", "next": "media_next_track", "
 HOME_TIMEOUTS = (0, 1, 3, 5, 10, 30)
 TIME_PATTERN = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
 DEFAULT_NIGHT = {"enabled": False, "start": "22:00", "end": "07:00", "level": 10}
+TOUCH_TIMEOUTS = (10, 15, 30, 60, 120, 300)
+DEFAULT_TOUCH = {"enabled": False, "timeout": 30}
 DEFAULT_LAYOUT = {
     "version": LAYOUT_VERSION, "refresh_seconds": 30, "power_mode": "external-refresh", "temperature_unit": "auto",
     "pages": [{"id": "home", "title": "我的家", "columns": 2, "sections": [
@@ -166,6 +168,17 @@ def normalize_tile(item, seen: set, columns: int, rows: int) -> dict:
     return tile
 
 
+def normalize_touch(value) -> dict:
+    if value is None:
+        return dict(DEFAULT_TOUCH)
+    if not isinstance(value, dict):
+        raise ProtocolError("触摸点亮设置有误")
+    touch = {**DEFAULT_TOUCH, **{key: value[key] for key in DEFAULT_TOUCH if key in value}}
+    if type(touch["enabled"]) is not bool or type(touch["timeout"]) is not int or touch["timeout"] not in TOUCH_TIMEOUTS:
+        raise ProtocolError("触摸点亮的熄灭时间有误")
+    return touch
+
+
 def normalize_night(value) -> dict:
     if value is None:
         return dict(DEFAULT_NIGHT)
@@ -197,6 +210,7 @@ def normalize_layout(data: dict) -> dict:
     if home_timeout not in HOME_TIMEOUTS or type(home_timeout) is not int:
         raise ProtocolError("自动回到首页的时间有误")
     night = normalize_night(data.get("night_light"))
+    touch = normalize_touch(data.get("touch_light"))
     allow_update = data.get("allow_update", False)
     if type(allow_update) is not bool:
         raise ProtocolError("在线更新设置有误")
@@ -235,7 +249,7 @@ def normalize_layout(data: dict) -> dict:
     if total < 1 or total > MAX_TILES:
         raise ProtocolError(f"请选择 1 至 {MAX_TILES} 张卡片")
     return {"version": LAYOUT_VERSION, "refresh_seconds": interval, "power_mode": power_mode,
-            "temperature_unit": unit, "home_timeout": home_timeout, "night_light": night,
+            "temperature_unit": unit, "home_timeout": home_timeout, "night_light": night, "touch_light": touch,
             "allow_update": allow_update, "pages": pages}
 
 

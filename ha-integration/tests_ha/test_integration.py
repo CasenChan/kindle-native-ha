@@ -61,7 +61,7 @@ async def test_full_device_flow(hass, hass_ws_client, hass_client_no_auth):
     frame = await (await client.post("/api/kindle_panel/device/snapshot", headers=headers,
                                      json={"battery": 80, "charging": True, "plugin_version": "0.3.0"})).json()
     assert frame["revision"] == revision and frame["temperature_unit"] == "°C"
-    assert frame["plugin"] == {"version": VERSION, "update": False}
+    assert frame["plugin"] == {"version": VERSION, "update": False, "allowed": False}
     assert "friendly_name" not in str(frame)
     hits = {(h.get("tile"), h.get("action"), h.get("value")) for page in frame["pages"] for h in page["hits"]}
     assert ("lamp", "power", True) in hits and ("ac", "temperature", 24.5) in hits

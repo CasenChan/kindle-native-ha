@@ -116,6 +116,58 @@ class RenderTests(unittest.TestCase):
         changed, _ = render(states=states)
         self.assertNotEqual(first["hash"], changed["hash"])
 
+    def test_every_kind_and_size_lays_out_cleanly(self):
+        """Every card kind at every w×h on 1–4 columns and 2–8 rows: shapes stay inside the card, texts do not
+        overlap each other or icons, fonts stay readable and tap targets stay finger-sized."""
+        modes = ["off", "cool", "heat", "dry", "fan_only", "auto"]
+        kinds = {
+            "toggle": ("switch.x", "on", {}), "dimmer": ("light.x", "on", {"brightness": 128, "supported_color_modes": ["hs"]}),
+            "number": ("sensor.x", "1234.56", {"unit_of_measurement": "kWh"}), "text": ("sensor.y", "Partly cloudy with rain", {}),
+            "action": ("scene.x", "unknown", {}), "lock": ("lock.x", "locked", {}), "offline": ("switch.x", "unavailable", {}),
+            "climate": ("climate.x", "cool", {"temperature": 24, "current_temperature": 26.3, "min_temp": 16, "max_temp": 30, "hvac_modes": modes}),
+            "cover": ("cover.x", "open", {"current_position": 60}), "media": ("media_player.x", "playing", {"media_title": "很长的歌曲名字 - Artist"}),
+        }
+
+        def box(op):
+            if op["t"] != "x":
+                return op["x"], op["y"], op.get("w", op.get("s")), op.get("h", op.get("s"))
+            width = r.text_width(op["v"], op["s"]) + (r.text_width(op["u"], op["s"] * .5) + op["s"] * .12 if op.get("u") else 0)
+            width = min(width, op.get("w", width))
+            left = {"r": op["x"] - width, "c": op["x"] - width / 2}.get(op.get("a"), op["x"])
+            return left, op["y"], width, op["s"] * 1.25
+
+        def overlap(a, b, slack):
+            return a[0] < b[0] + b[2] - slack and b[0] < a[0] + a[2] - slack and a[1] < b[1] + b[3] - slack and b[1] < a[1] + a[3] - slack
+
+        for name, (entity_id, state, attributes) in kinds.items():
+            for columns in (1, 2, 3, 4):
+                for rows in (2, 3, 4, 6, 8):
+                    for w in range(1, columns + 1):
+                        for h in range(1, min(rows, 4) + 1):
+                            layout = p.normalize_layout({"pages": [{"id": "p", "title": "测试", "columns": columns, "sections": [
+                                {"id": "s", "title": "房间", "rows": rows,
+                                 "tiles": [{"id": "t", "entity_id": entity_id, "title": "客厅主灯开关", "w": w, "h": h}]}]}]})
+                            snap, _ = r.snapshot(layout, 1, {entity_id: {"state": state, "attributes": attributes}}, "°C", 758, 1024)
+                            page, label = snap["pages"][0], f"{name} {columns}col {rows}rows {w}x{h}"
+                            card = page["cards"][0]
+                            mine = [op for op in page["ops"] if card["x"] - 2 <= op["x"] <= card["x"] + card["w"]
+                                    and card["y"] - 2 <= op["y"] <= card["y"] + card["h"]]
+                            texts = [box(op) for op in mine if op["t"] == "x"]
+                            for op in mine:
+                                left, top, width, height = box(op)
+                                self.assertLessEqual(left + width, card["x"] + card["w"] + 1, label)
+                                self.assertLessEqual(top + height, card["y"] + card["h"] + 2, label)
+                                if op["t"] == "x":
+                                    self.assertGreaterEqual(op["s"], 14, label)
+                            for i, a in enumerate(texts):
+                                for b in texts[i + 1:]:
+                                    self.assertFalse(overlap(a, b, 4), label)
+                                for icon in (box(op) for op in mine if op["t"] == "i"):
+                                    self.assertFalse(overlap(a, icon, 2), label)
+                            for hit in page["hits"]:
+                                if "tile" in hit:
+                                    self.assertGreaterEqual(min(hit["w"], hit["h"]), 30, label)
+
     def test_payload_stays_small(self):
         snap, _ = render()
         self.assertLess(len(json.dumps(snap, ensure_ascii=False).encode()), 200_000)

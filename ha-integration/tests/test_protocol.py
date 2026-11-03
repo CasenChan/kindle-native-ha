@@ -158,7 +158,11 @@ class NewControlTests(unittest.TestCase):
                                      "night_light": {"enabled": True, "start": "23:00", "end": "06:30", "level": 5}})
         self.assertEqual((layout["home_timeout"], layout["allow_update"], layout["night_light"]["level"]), (5, True, 5))
         self.assertFalse(p.default_layout()["allow_update"])
+        touch = p.normalize_layout({**p.default_layout(), "touch_light": {"enabled": True, "timeout": 60}})["touch_light"]
+        self.assertEqual(touch, {"enabled": True, "timeout": 60})
+        self.assertFalse(p.default_layout()["touch_light"]["enabled"])
         for change in ({"home_timeout": 7}, {"allow_update": "yes"}, {"night_light": {"start": "25:00"}},
+                       {"touch_light": {"enabled": True, "timeout": 7}}, {"touch_light": {"enabled": "on"}},
                        {"night_light": {"start": "07:00", "end": "07:00"}}, {"night_light": {"level": 101}}):
             with self.subTest(change=change), self.assertRaises(p.ProtocolError):
                 p.normalize_layout({**p.default_layout(), **change})
