@@ -11,11 +11,13 @@ python ha-integration/build.py
 python ha-integration/package.py
 ```
 
-解压 `ha-integration/dist/kindle-panel-0.2.0.zip`，将其中 `custom_components/kindle_panel` 复制到 HA 配置目录的 `custom_components/kindle_panel`。可使用 HA 官方 File editor；配置目录在不同安装中可能显示为 `/config` 或 `/homeassistant`。
+解压 `ha-integration/dist/kindle-panel-0.3.0.zip`，将其中 `custom_components/kindle_panel` 复制到 HA 配置目录的 `custom_components/kindle_panel`。可使用 HA 官方 File editor；配置目录在不同安装中可能显示为 `/config` 或 `/homeassistant`。
 
 检查 HA 配置并重启，在“设置 → 设备与服务 → 添加集成”搜索 **Kindle Panel**。完成后打开侧边栏 **Kindle 面板**。
 
-将默认示例卡片替换成真实存在的实体，可添加、删除、改名、选图标、调顺序和行列数，然后保存。温湿度单位沿用实体本身，空调温度使用 HA 的配置单位。
+将默认示例卡片替换成真实存在的实体，然后保存。编辑器左栏按「页面 → 房间分组 → 卡片」组织：可新建页面和分组、搜索添加实体、改名和换图标；在中间预览里拖动卡片换位置，拖右下角改大小。「面板设置」里可选温度单位（跟随 HA / °C / °F）、刷新间隔和常驻方式。
+
+从 0.2 升级时，已保存的布局会自动迁移；Kindle 插件也必须同时更新（见下一节），否则 Kindle 会提示布局数据有误。
 
 ## 2. 部署原生客户端
 
@@ -38,11 +40,11 @@ python native-ha/deploy_usb.py --device /media/Kindle
 ## 3. 配对
 
 1. 退出面板，USB 连接 Kindle。
-2. 在 HA 网页点击 **配对 Kindle**，把下载的 `kindle-pairing.json` 放到设备 `nativeha/`。
+2. 在 HA 编辑器的 **设备** 标签确认「Kindle 连接 HA 的地址」是局域网 `http://` 地址（如 `http://192.168.1.20:8123`），点击 **下载配对文件**，把 `kindle-pairing.json` 放到设备 `nativeha/`。
 3. 十分钟内安全弹出拔线，Kindle 连接家中 Wi-Fi，打开原生面板。
 4. 配对成功后检查真实状态，验证一个可恢复的控制操作，再退出并接回 USB。
 
-配对文件会自动移除。密钥保存在 Kindle 系统分区的私有数据目录；无需管理员 Token。当前客户端连接局域网 HTTP 地址，配对文件自动记录访问 HA 编辑器时使用的地址。
+配对文件会自动移除。密钥保存在 Kindle 系统分区的私有数据目录；无需管理员 Token。客户端只连接局域网 HTTP 地址；如果你通过 https 或外网地址打开 HA，请在设备页手动填写内网地址。最多配对 5 台，不用的设备可在设备页撤销。
 
 ## 4. 安装开机启动
 
@@ -65,3 +67,5 @@ python native-ha/prepare_startup_usb.py --device H:/
 默认接电每 30 秒更新；电池可按 KOReader 的无操作超时休眠，短按电源也可休眠。墨水屏保留 HA 画面，唤醒后刷新。网页改变布局后，客户端下一轮读取会同步。
 
 右上角房屋图标或屏幕长按打开维护菜单。手动退出后，用 KUAL 重新进入，或重启自动进入。电脑可以关闭，运行只需要 Kindle 与 HA 在同一可达网络。
+
+顶部太阳按钮打开背光面板：两侧按钮逐级调暗/调亮，中间亮度条可直接点选，下方为关闭、低、中、高四档；点面板外关闭。底部页签切换页面，也可左右滑动。点击状态已过期的卡片会先刷新再执行，一次点击即可。

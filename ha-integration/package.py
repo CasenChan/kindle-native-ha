@@ -9,7 +9,8 @@ output = ROOT / "dist"
 output.mkdir(exist_ok=True)
 source = ROOT / "custom_components/kindle_panel"
 files = sorted(path for path in source.rglob("*") if path.is_file() and "__pycache__" not in path.parts)
-archive = output / "kindle-panel-0.2.0.zip"
+version = json.loads((source / "manifest.json").read_text(encoding="utf-8"))["version"]
+archive = output / f"kindle-panel-{version}.zip"
 manifest = []
 with ZipFile(archive, "w", ZIP_DEFLATED) as package:
     for path in files:

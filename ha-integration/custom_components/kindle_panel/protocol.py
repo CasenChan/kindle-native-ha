@@ -1,4 +1,4 @@
-"""Validated, HA-independent layout and device protocol."""
+"""Validated, HA-independent layout model, device protocol and pairing."""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -10,16 +10,28 @@ import secrets
 import time
 
 DOMAIN = "kindle_panel"
-ICONS = ("bulb", "thermostat", "temperature", "humidity", "power", "fan", "home", "scene", "plug", "sensor")
+VERSION = "0.3.0"
+LAYOUT_VERSION = 2
+ICONS = ("bulb", "thermostat", "temperature", "humidity", "power", "fan", "home", "scene", "plug", "sensor",
+         "door", "window", "lock", "curtain", "tv", "motion", "battery", "bolt")
+TEMPERATURE_UNITS = ("auto", "°C", "°F")
+POWER_MODES = ("external-refresh", "always-refresh")
+MAX_PAGES, MAX_SECTIONS, MAX_COLUMNS, MAX_PAGE_ROWS, MAX_SECTION_TILES, MAX_TILES = 8, 6, 4, 8, 32, 60
+
+TOGGLE_DOMAINS = {"switch", "light", "fan", "input_boolean", "humidifier"}
+ACTION_DOMAINS = {"scene", "script", "button", "input_button"}
 DEFAULT_LAYOUT = {
-    "title": "我的家", "columns": 2, "rows": 3, "refresh_seconds": 30,
-    "power_mode": "external-refresh",
-    "tiles": [
-        {"id": "light-left", "entity_id": "switch.room_light_left", "title": "房间灯左键", "icon": "bulb", "span": 1},
-        {"id": "light-right", "entity_id": "switch.room_light_right", "title": "房间灯右键", "icon": "bulb", "span": 1},
-        {"id": "climate", "entity_id": "climate.bedroom", "title": "卧室空调", "icon": "thermostat", "span": 2},
-    ],
+    "version": LAYOUT_VERSION, "refresh_seconds": 30, "power_mode": "external-refresh", "temperature_unit": "auto",
+    "pages": [{"id": "home", "title": "我的家", "columns": 2, "sections": [
+        {"id": "living", "title": "", "rows": 3, "summary": True, "tiles": [
+            {"id": "light-left", "entity_id": "switch.room_light_left", "title": "房间灯左键", "icon": "bulb"},
+            {"id": "light-right", "entity_id": "switch.room_light_right", "title": "房间灯右键", "icon": "bulb"},
+            {"id": "climate", "entity_id": "climate.bedroom", "title": "卧室空调", "icon": "thermostat", "w": 2},
+        ]},
+    ]}],
 }
+ID_PATTERN = re.compile(r"[a-zA-Z0-9_-]{1,48}")
+ENTITY_PATTERN = re.compile(r"[a-z0-9_]+\.[a-z0-9_]+")
 
 
 class ProtocolError(ValueError):
@@ -28,11 +40,11 @@ class ProtocolError(ValueError):
 
 def kind_for_entity(entity_id: str) -> str:
     domain = entity_id.partition(".")[0]
-    if domain in {"switch", "light", "fan"}:
+    if domain in TOGGLE_DOMAINS:
         return "toggle"
     if domain == "climate":
         return "climate"
-    if domain in {"scene", "script", "button"}:
+    if domain in ACTION_DOMAINS:
         return "action"
     return "sensor"
 
@@ -43,94 +55,192 @@ def integer(value, low: int, high: int, name: str) -> int:
     return value
 
 
-def label(value, default: str, limit: int = 40) -> str:
+def label(value, default: str, limit: int = 40, allow_empty: bool = False) -> str:
     if value is None:
         value = default
     if not isinstance(value, str) or any(ord(char) < 32 for char in value):
         raise ProtocolError("名称格式有误")
     value = value.strip()
-    if not value or len(value) > limit:
+    if len(value) > limit or (not value and not allow_empty):
         raise ProtocolError("名称过长或为空")
     return value
+
+
+def identifier(value, seen: set, name: str) -> str:
+    if not isinstance(value, str) or not ID_PATTERN.fullmatch(value) or value in seen:
+        raise ProtocolError(f"{name}编号重复或无效")
+    seen.add(value)
+    return value
+
+
+# ---------------------------------------------------------------- layout model
+
+def migrate_v1(data: dict) -> dict:
+    """Convert the 0.2 flat grid (columns/rows/tiles with span) into pages of one untitled section."""
+    columns = data.get("columns", 2) if data.get("columns") in (1, 2) else 2
+    rows = data.get("rows", 3) if data.get("rows") in (2, 3, 4) else 3
+    tiles = data.get("tiles") if isinstance(data.get("tiles"), list) else []
+    pages, current, row, column = [], [], 0, 0
+    for item in tiles:
+        if not isinstance(item, dict):
+            raise ProtocolError("卡片格式有误")
+        entity_id = item.get("entity_id", "")
+        span = columns if kind_for_entity(str(entity_id)) == "climate" else min(columns, item.get("span", 1) if item.get("span") in (1, 2) else 1)
+        if column + span > columns:
+            row, column = row + 1, 0
+        if row >= rows:
+            pages.append(current)
+            current, row, column = [], 0, 0
+        current.append({key: item[key] for key in ("id", "entity_id", "title", "icon") if key in item}
+                       | {"w": span, "h": 1, "x": column, "y": row})
+        column += span
+        if column >= columns:
+            row, column = row + 1, 0
+    pages.append(current)
+    title = data.get("title") if isinstance(data.get("title"), str) and data.get("title").strip() else "我的家"
+    return {
+        "version": LAYOUT_VERSION, "refresh_seconds": data.get("refresh_seconds", 30),
+        "power_mode": data.get("power_mode", "external-refresh"), "temperature_unit": "auto",
+        "pages": [{"id": f"page-{index + 1}", "title": title if len(pages) == 1 else f"{title[:12]} {index + 1}",
+                   "columns": columns,
+                   "sections": [{"id": f"section-{index + 1}", "title": "", "rows": rows, "summary": True,
+                                 "tiles": page_tiles}]}
+                  for index, page_tiles in enumerate(pages)],
+    }
+
+
+def place_tiles(tiles: list[dict], columns: int, rows: int, section_name: str) -> list[dict]:
+    """Keep valid explicit positions, first-fit the rest, return tiles in reading order."""
+    used = [[False] * columns for _ in range(rows)]
+
+    def free(x, y, w, h):
+        return 0 <= x and 0 <= y and x + w <= columns and y + h <= rows and not any(
+            used[row][col] for row in range(y, y + h) for col in range(x, x + w))
+
+    def occupy(tile, x, y):
+        for row in range(y, y + tile["h"]):
+            for col in range(x, x + tile["w"]):
+                used[row][col] = True
+        tile["x"], tile["y"] = x, y
+
+    pending = []
+    for tile in tiles:
+        x, y = tile.get("x"), tile.get("y")
+        if type(x) is int and type(y) is int and free(x, y, tile["w"], tile["h"]):
+            occupy(tile, x, y)
+        else:
+            pending.append(tile)
+    for tile in pending:
+        spot = next(((x, y) for y in range(rows) for x in range(columns) if free(x, y, tile["w"], tile["h"])), None)
+        if spot is None:
+            raise ProtocolError(f"「{section_name}」放不下所有卡片，请增加行数或缩小卡片")
+        occupy(tile, *spot)
+    return sorted(tiles, key=lambda tile: (tile["y"], tile["x"]))
+
+
+def normalize_tile(item, seen: set, columns: int, rows: int) -> dict:
+    if not isinstance(item, dict):
+        raise ProtocolError("卡片格式有误")
+    tile_id = identifier(item.get("id"), seen, "卡片")
+    entity_id = item.get("entity_id")
+    if not isinstance(entity_id, str) or not ENTITY_PATTERN.fullmatch(entity_id):
+        raise ProtocolError("实体编号有误")
+    kind = kind_for_entity(entity_id)
+    icon = item.get("icon") or default_icon(entity_id)
+    if icon not in ICONS:
+        raise ProtocolError("请选择支持的图标")
+    width = integer(item.get("w", 1), 1, MAX_COLUMNS, "卡片宽度")
+    height = integer(item.get("h", 1), 1, MAX_PAGE_ROWS, "卡片高度")
+    tile = {"id": tile_id, "entity_id": entity_id, "title": label(item.get("title"), entity_id),
+            "icon": icon, "kind": kind, "w": min(width, columns), "h": min(height, rows)}
+    for key in ("x", "y"):
+        if type(item.get(key)) is int:
+            tile[key] = item[key]
+    return tile
 
 
 def normalize_layout(data: dict) -> dict:
     if not isinstance(data, dict):
         raise ProtocolError("布局格式有误")
-    columns = integer(data.get("columns", 2), 1, 2, "列数")
-    rows = integer(data.get("rows", 3), 2, 4, "行数")
+    if "pages" not in data and "tiles" in data:
+        data = migrate_v1(data)
     interval = integer(data.get("refresh_seconds", 30), 15, 300, "刷新间隔")
     power_mode = data.get("power_mode", "external-refresh")
-    if power_mode not in {"external-refresh", "always-refresh"}:
+    if power_mode not in POWER_MODES:
         raise ProtocolError("常驻方式有误")
-    source = data.get("tiles")
-    if not isinstance(source, list) or not 1 <= len(source) <= 24:
-        raise ProtocolError("请选择 1 至 24 张卡片")
-    seen, tiles = set(), []
-    for item in source:
-        if not isinstance(item, dict):
-            raise ProtocolError("卡片格式有误")
-        tile_id, entity_id = item.get("id"), item.get("entity_id")
-        if not isinstance(tile_id, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,48}", tile_id) or tile_id in seen:
-            raise ProtocolError("卡片编号重复或无效")
-        if not isinstance(entity_id, str) or not re.fullmatch(r"[a-z0-9_]+\.[a-z0-9_]+", entity_id):
-            raise ProtocolError("实体编号有误")
-        icon = item.get("icon", "sensor")
-        if icon not in ICONS:
-            raise ProtocolError("请选择支持的图标")
-        kind = kind_for_entity(entity_id)
-        span = min(columns, integer(item.get("span", 1), 1, 2, "卡片宽度"))
-        if kind == "climate":
-            span = columns
-        seen.add(tile_id)
-        tiles.append({"id": tile_id, "entity_id": entity_id, "title": label(item.get("title"), entity_id),
-                      "icon": icon, "kind": kind, "span": span})
-    return {"title": label(data.get("title"), "我的家", 24), "columns": columns, "rows": rows,
-            "refresh_seconds": interval, "power_mode": power_mode, "tiles": tiles}
+    unit = data.get("temperature_unit", "auto")
+    if unit not in TEMPERATURE_UNITS:
+        raise ProtocolError("温度单位有误")
+    source_pages = data.get("pages")
+    if not isinstance(source_pages, list) or not 1 <= len(source_pages) <= MAX_PAGES:
+        raise ProtocolError(f"请保留 1 至 {MAX_PAGES} 个页面")
+    page_ids, section_ids, tile_ids, pages, total = set(), set(), set(), [], 0
+    for page_index, page in enumerate(source_pages, 1):
+        if not isinstance(page, dict):
+            raise ProtocolError("页面格式有误")
+        columns = integer(page.get("columns", 2), 1, MAX_COLUMNS, "列数")
+        source_sections = page.get("sections")
+        if not isinstance(source_sections, list) or not 1 <= len(source_sections) <= MAX_SECTIONS:
+            raise ProtocolError(f"每页需要 1 至 {MAX_SECTIONS} 个分组")
+        page_title = label(page.get("title"), f"第 {page_index} 页", 16)
+        sections, page_rows = [], 0
+        for section_index, section in enumerate(source_sections, 1):
+            if not isinstance(section, dict):
+                raise ProtocolError("分组格式有误")
+            rows = integer(section.get("rows", 2), 1, MAX_PAGE_ROWS, "分组行数")
+            page_rows += rows
+            title = label(section.get("title"), "", 16, allow_empty=True)
+            source_tiles = section.get("tiles", [])
+            if not isinstance(source_tiles, list) or len(source_tiles) > MAX_SECTION_TILES:
+                raise ProtocolError(f"每个分组最多 {MAX_SECTION_TILES} 张卡片")
+            tiles = [normalize_tile(item, tile_ids, columns, rows) for item in source_tiles]
+            total += len(tiles)
+            name = title or f"{page_title} · 第 {section_index} 组"
+            sections.append({"id": identifier(section.get("id"), section_ids, "分组"), "title": title,
+                             "rows": rows, "summary": section.get("summary", True) is not False,
+                             "tiles": place_tiles(tiles, columns, rows, name)})
+        if page_rows > MAX_PAGE_ROWS:
+            raise ProtocolError(f"「{page_title}」的分组合计超过 {MAX_PAGE_ROWS} 行，请减少行数或拆分页面")
+        pages.append({"id": identifier(page.get("id"), page_ids, "页面"), "title": page_title,
+                      "columns": columns, "sections": sections})
+    if total < 1 or total > MAX_TILES:
+        raise ProtocolError(f"请选择 1 至 {MAX_TILES} 张卡片")
+    return {"version": LAYOUT_VERSION, "refresh_seconds": interval, "power_mode": power_mode,
+            "temperature_unit": unit, "pages": pages}
 
 
-def geometry(layout: dict, width: int = 758, height: int = 1024) -> dict:
-    integer(width, 400, 2732, "屏幕宽度")
-    integer(height, 400, 2732, "屏幕高度")
-    scale = min(width / 758, height / 1024)
-    margin, gap = round(20 * scale), round(16 * scale)
-    header, footer = round(108 * scale), round(60 * scale)
-    columns, rows = layout["columns"], layout["rows"]
-    cell_w = (width - margin * 2 - gap * (columns - 1)) // columns
-    cell_h = (height - header - footer - margin - gap * (rows - 1)) // rows
-    page = row = column = 0
-    cards = []
-    for tile in layout["tiles"]:
-        span = tile["span"]
-        if column + span > columns:
-            row, column = row + 1, 0
-        if row >= rows:
-            page, row, column = page + 1, 0, 0
-        factor = scale * min(1, cell_h / (250 * scale))
-        icon_size, title_font, value_font = round(64 * factor), round(25 * factor), round(38 * factor)
-        content_height = icon_size + title_font + value_font + round(28 * factor)
-        icon_y = max(round(14 * factor), (cell_h - content_height) // 2)
-        pad, control_h = round(28 * factor), round(60 * factor)
-        metrics = {"pad": pad, "icon_size": icon_size, "icon_y": icon_y,
-                   "title_y": icon_y + icon_size + round(14 * factor),
-                   "value_y": icon_y + icon_size + title_font + round(28 * factor),
-                   "title_font": title_font, "value_font": value_font, "small_font": round(19 * factor),
-                   "climate_icon_size": round(48 * factor),
-                   "climate_title_x": pad + round(68 * factor),
-                   "mode_y": pad + title_font + round(3 * factor),
-                   "current_y": cell_h - control_h - round(104 * factor),
-                   "climate_value_font": round(45 * factor), "label_font": round(17 * factor),
-                   "control_h": control_h, "control_font": round(28 * factor)}
-        cards.append({"id": tile["id"], "page": page, "x": margin + column * (cell_w + gap),
-                      "y": header + row * (cell_h + gap), "w": span * cell_w + (span - 1) * gap, "h": cell_h,
-                      "metrics": metrics})
-        column += span
-        if column >= columns:
-            row, column = row + 1, 0
-    return {"width": width, "height": height, "pages": page + 1, "cards": cards,
-            "margin": margin, "header": header, "footer": footer,
-            "fonts": {"header": round(34 * scale), "title": round(25 * scale),
-                      "value": round(38 * scale), "small": round(20 * scale)}, "icon_size": round(64 * scale)}
+def iter_tiles(layout: dict):
+    for page in layout["pages"]:
+        for section in page["sections"]:
+            yield from section["tiles"]
+
+
+def find_tile(layout: dict, tile_id) -> dict | None:
+    return next((tile for tile in iter_tiles(layout) if tile["id"] == tile_id), None)
+
+
+def default_icon(entity_id: str, device_class: str | None = None) -> str:
+    domain = entity_id.partition(".")[0]
+    by_class = {"temperature": "temperature", "humidity": "humidity", "door": "door", "garage_door": "door",
+                "window": "window", "opening": "door", "lock": "lock", "motion": "motion", "occupancy": "motion",
+                "presence": "motion", "battery": "battery", "power": "bolt", "energy": "bolt",
+                "curtain": "curtain", "blind": "curtain", "shade": "curtain", "tv": "tv", "outlet": "plug"}
+    by_domain = {"light": "bulb", "switch": "plug", "fan": "fan", "climate": "thermostat", "scene": "scene",
+                 "script": "scene", "button": "power", "input_button": "power", "lock": "lock", "cover": "curtain",
+                 "media_player": "tv", "humidifier": "humidity", "input_boolean": "power", "person": "home"}
+    return by_class.get(device_class or "") or by_domain.get(domain, "sensor")
+
+
+# ---------------------------------------------------------------- temperature
+
+def convert_temperature(value: float, source: str, target: str) -> float:
+    if source == target or source not in ("°C", "°F") or target not in ("°C", "°F"):
+        return value
+    return value * 9 / 5 + 32 if target == "°F" else (value - 32) * 5 / 9
+
+
+def display_unit(layout: dict, system_unit: str) -> str:
+    return system_unit if layout.get("temperature_unit", "auto") == "auto" else layout["temperature_unit"]
 
 
 def finite_number(value):
@@ -139,7 +249,63 @@ def finite_number(value):
     return value
 
 
-def service_for_action(tile: dict, action: str, value, state: dict | None) -> tuple[str, str, dict]:
+def optional_number(value):
+    try:
+        return finite_number(value)
+    except ProtocolError:
+        return None
+
+
+def snap(value: float, step: float) -> float:
+    return round(round(value / step) * step, 4)
+
+
+def climate_view(attributes: dict, system_unit: str, unit: str) -> dict:
+    """Current/target/range in the panel's display unit; target snapped to the display step."""
+    step = optional_number(attributes.get("target_temp_step")) or 1
+    if unit != system_unit:
+        step = 0.5 if unit == "°C" else 1
+    result = {"step": step, "unit": unit}
+    for key in ("current_temperature", "temperature", "min_temp", "max_temp"):
+        value = optional_number(attributes.get(key))
+        result[key] = None if value is None else convert_temperature(value, system_unit, unit)
+    if result["temperature"] is not None:
+        # Same unit: keep HA's grid (anchored at min_temp) so ±step stays valid for set_temperature.
+        base = result["min_temp"] if unit == system_unit and result["min_temp"] is not None else 0
+        result["temperature"] = round(base + snap(result["temperature"] - base, step), 4)
+    if result["current_temperature"] is not None:
+        result["current_temperature"] = round(result["current_temperature"], 1)
+    return result
+
+
+def target_temperature(value, state: dict, system_unit: str, unit: str) -> float:
+    """Translate a requested display-unit target into a valid system-unit target."""
+    attributes = state.get("attributes") or {}
+    target = finite_number(value)
+    low, high = finite_number(attributes.get("min_temp")), finite_number(attributes.get("max_temp"))
+    step = finite_number(attributes.get("target_temp_step", 1))
+    if step <= 0 or state.get("state") == "off":
+        raise ProtocolError("温度超出范围，或空调已关机")
+    if unit == system_unit:
+        if not low <= target <= high or abs((target - low) / step - round((target - low) / step)) > 0.00001:
+            raise ProtocolError("温度超出范围或步长不受支持")
+        return target
+    view = climate_view(attributes, system_unit, unit)
+    if not view["min_temp"] - view["step"] <= target <= view["max_temp"] + view["step"]:
+        raise ProtocolError("温度超出范围")
+    wanted = convert_temperature(target, unit, system_unit)
+    result = low + round((wanted - low) / step) * step
+    current = optional_number(attributes.get("temperature"))
+    if current is not None and view["temperature"] is not None and abs(result - current) < step / 2 \
+            and target != view["temperature"]:
+        result = current + (step if target > view["temperature"] else -step)
+    return round(min(high, max(low, result)), 4)
+
+
+# ---------------------------------------------------------------- device actions
+
+def service_for_action(tile: dict, action: str, value, state: dict | None,
+                       system_unit: str = "°C", unit: str | None = None) -> tuple[str, str, dict]:
     """Return only an allowlisted service for the stored tile, never client-supplied IDs."""
     entity_id = tile["entity_id"]
     domain = entity_id.partition(".")[0]
@@ -150,38 +316,20 @@ def service_for_action(tile: dict, action: str, value, state: dict | None) -> tu
     if kind == "toggle" and action == "power" and type(value) is bool:
         return domain, "turn_on" if value else "turn_off", fields
     if kind == "climate":
-        attr = state.get("attributes") or {}
+        attributes = state.get("attributes") or {}
         if action == "power" and type(value) is bool:
             return "climate", "turn_on" if value else "turn_off", fields
         if action == "temperature":
-            target = finite_number(value)
-            low, high = finite_number(attr.get("min_temp")), finite_number(attr.get("max_temp"))
-            step = finite_number(attr.get("target_temp_step", 1))
-            if step <= 0 or not low <= target <= high or state["state"] == "off":
-                raise ProtocolError("温度超出范围，或空调已关机")
-            steps = (target - low) / step
-            if abs(steps - round(steps)) > 0.00001:
-                raise ProtocolError("温度步长不受支持")
-            return "climate", "set_temperature", {**fields, "temperature": target}
-        if action == "mode" and isinstance(value, str) and value in (attr.get("hvac_modes") or []):
+            temperature = target_temperature(value, state, system_unit, unit or system_unit)
+            return "climate", "set_temperature", {**fields, "temperature": temperature}
+        if action == "mode" and isinstance(value, str) and value in (attributes.get("hvac_modes") or []):
             return "climate", "set_hvac_mode", {**fields, "hvac_mode": value}
     if kind == "action" and action == "activate" and value is None:
-        return domain, "press" if domain == "button" else "turn_on", fields
+        return domain, "press" if domain in {"button", "input_button"} else "turn_on", fields
     raise ProtocolError("此卡片不支持该操作")
 
 
-def public_state(tile: dict, state: dict | None) -> dict:
-    if state is None:
-        return {"state": "unavailable", "available": False, "attributes": {}}
-    attributes = state.get("attributes") or {}
-    allowed = ("unit_of_measurement",)
-    if tile["kind"] == "climate":
-        allowed += ("temperature", "current_temperature", "min_temp", "max_temp", "target_temp_step",
-                    "hvac_modes", "fan_mode", "swing_mode")
-    return {"state": str(state.get("state", "unknown")),
-            "available": state.get("state") != "unavailable" and (state.get("state") != "unknown" or tile["kind"] == "action"),
-            "attributes": {key: deepcopy(attributes[key]) for key in allowed if key in attributes}}
-
+# ---------------------------------------------------------------- pairing
 
 def token_hash(secret: str) -> str:
     return hashlib.sha256(secret.encode("utf-8")).hexdigest()
@@ -209,7 +357,7 @@ class Pairing:
         device_id, secret = secrets.token_hex(12), secrets.token_urlsafe(32)
         device = {"id": device_id, "name": name, "owner_id": pending["owner_id"],
                   "key_hash": token_hash(secret), "width": width, "height": height, "last_seen": 0,
-                  "battery": None, "charging": False}
+                  "battery": None, "charging": False, "revision": None}
         self.pending = None
         return device, device_id + "." + secret
 
@@ -222,3 +370,7 @@ def authenticate(devices: dict, key: str | None) -> dict | None:
     if not separator or not device:
         return None
     return device if hmac.compare_digest(token_hash(secret), device.get("key_hash", "")) else None
+
+
+def default_layout() -> dict:
+    return normalize_layout(deepcopy(DEFAULT_LAYOUT))

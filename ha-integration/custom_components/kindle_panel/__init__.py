@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 from copy import deepcopy
 import json
+import logging
 from pathlib import Path
 import time
 
@@ -14,26 +15,31 @@ from homeassistant.components.http import KEY_HASS, HomeAssistantView, StaticPat
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.storage import Store
 
 from .protocol import (
-    DEFAULT_LAYOUT, DOMAIN, Pairing, ProtocolError, authenticate, geometry,
-    normalize_layout, public_state, service_for_action,
+    DOMAIN, ICONS, VERSION, Pairing, ProtocolError, authenticate, default_layout, display_unit, find_tile,
+    iter_tiles, normalize_layout, service_for_action,
 )
+from .render import snapshot
 
+_LOGGER = logging.getLogger(__name__)
 # Use the validator actually used by HA's WebSocket layer across its migration.
 vol = getattr(websocket_api.decorators, "vol", None) or websocket_api.decorators.probatio
 
 PANEL_PATH = "kindle-panel"
 API_PATH = "/api/kindle_panel"
+DEFAULT_SCREEN = {"width": 758, "height": 1024}
+MAX_DEVICES = 5
 
 
 class Runtime:
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
         self.hass, self.entry = hass, entry
         self.store = Store(hass, 1, DOMAIN)
-        self.layout = normalize_layout(deepcopy(DEFAULT_LAYOUT))
+        self.layout = default_layout()
         self.revision = 1
         self.devices: dict[str, dict] = {}
         self.pairing = Pairing()
@@ -41,9 +47,12 @@ class Runtime:
 
     async def load(self):
         if data := await self.store.async_load():
-            self.layout = normalize_layout(data.get("layout", self.layout))
             self.revision = max(1, int(data.get("revision", 1)))
             self.devices = data.get("devices", {})
+            try:
+                self.layout = normalize_layout(data.get("layout", self.layout))
+            except ProtocolError as err:
+                _LOGGER.warning("Stored Kindle layout is invalid (%s); using the example layout", err)
 
     def stored(self):
         return {"layout": self.layout, "revision": self.revision, "devices": self.devices}
@@ -51,27 +60,51 @@ class Runtime:
     async def save(self):
         await self.store.async_save(self.stored())
 
+    @property
+    def system_unit(self) -> str:
+        return str(self.hass.config.units.temperature_unit)
+
     @staticmethod
     def device_public(device):
-        return {key: device.get(key) for key in ("id", "name", "width", "height", "last_seen", "battery", "charging")}
+        return {key: device.get(key) for key in
+                ("id", "name", "width", "height", "last_seen", "battery", "charging", "revision")}
 
     def state_for(self, entity_id):
         state = self.hass.states.get(entity_id)
-        return {"state": state.state, "attributes": dict(state.attributes)} if state else None
+        if state is None:
+            return None
+        precision = None
+        if entry := er.async_get(self.hass).async_get(entity_id):
+            options = entry.options.get("sensor") or {}
+            value = options.get("display_precision", options.get("suggested_display_precision"))
+            precision = value if type(value) is int else None
+        return {"state": state.state, "attributes": dict(state.attributes), "precision": precision}
 
-    def states_for(self, owner, layout=None):
-        result = {}
-        for tile in (layout or self.layout)["tiles"]:
-            allowed = owner.permissions.check_entity(tile["entity_id"], POLICY_READ)
-            result[tile["id"]] = public_state(tile, self.state_for(tile["entity_id"]) if allowed else None)
-        return result
+    def states_for(self, owner, layout):
+        """Raw states of the layout's entities that the pairing owner may read; others look unavailable."""
+        return {tile["entity_id"]: self.state_for(tile["entity_id"])
+                for tile in iter_tiles(layout) if owner.permissions.check_entity(tile["entity_id"], POLICY_READ)}
 
-    def admin_data(self, owner):
-        devices = [self.device_public(item) for item in self.devices.values()]
-        screen = devices[0] if devices else {"width": 758, "height": 1024}
-        return {"layout": self.layout, "revision": self.revision, "devices": devices,
-                "geometry": geometry(self.layout, screen["width"], screen["height"]),
-                "states": self.states_for(owner), "temperature_unit": str(self.hass.config.units.temperature_unit)}
+    def frame(self, owner, layout, screen):
+        return snapshot(layout, self.revision, self.states_for(owner, layout), self.system_unit,
+                        screen["width"], screen["height"])
+
+    def suggested_url(self):
+        """The LAN URL a Kindle can reach; the device client only speaks plain HTTP."""
+        try:
+            url = get_url(self.hass, allow_external=False, allow_cloud=False, prefer_external=False)
+        except NoURLAvailableError:
+            return None
+        return url if url.startswith("http://") else None
+
+    def admin_data(self, owner, layout=None, device_id=None):
+        layout = layout or self.layout
+        screen = self.devices.get(device_id) or next(iter(self.devices.values()), DEFAULT_SCREEN)
+        frame, views = self.frame(owner, layout, screen)
+        return {"layout": layout, "revision": self.revision, "frame": frame, "views": views,
+                "devices": [self.device_public(item) for item in self.devices.values()],
+                "system_unit": self.system_unit, "suggested_url": self.suggested_url(),
+                "icons": list(ICONS), "version": VERSION, "now": time.time()}
 
     async def auth_device(self, key):
         device = authenticate(self.devices, key)
@@ -120,8 +153,8 @@ class PairView(HomeAssistantView):
         manager = runtime(request.app[KEY_HASS])
         body = await read_json(request)
         async with manager.lock:
-            if len(manager.devices) >= 5:
-                return web.json_response({"error": "请先移除不用的设备"}, status=400)
+            if len(manager.devices) >= MAX_DEVICES:
+                return web.json_response({"error": "已配对 5 台设备，请先在 HA 网页撤销不用的设备"}, status=400)
             try:
                 device, key = manager.pairing.consume(body.get("code"), body.get("name", "Kindle"),
                                                        body.get("width", 758), body.get("height", 1024))
@@ -158,11 +191,10 @@ class SnapshotView(HomeAssistantView):
         width, height = body.get("width"), body.get("height")
         if type(width) is int and type(height) is int and 400 <= width <= 2732 and 400 <= height <= 2732:
             device["width"], device["height"] = width, height
+        device["revision"] = manager.revision
         manager.store.async_delay_save(manager.stored, 30)
-        return web.json_response({"revision": manager.revision, "layout": manager.layout,
-                                  "geometry": geometry(manager.layout, device["width"], device["height"]),
-                                  "states": manager.states_for(owner), "device": manager.device_public(device),
-                                  "temperature_unit": str(manager.hass.config.units.temperature_unit)})
+        frame, _ = manager.frame(owner, manager.layout, device)
+        return web.json_response({**frame, "device": manager.device_public(device)})
 
 
 class ActionView(HomeAssistantView):
@@ -176,14 +208,15 @@ class ActionView(HomeAssistantView):
         body = await read_json(request)
         if body.get("revision") != manager.revision:
             return web.json_response({"error": "布局已更新，请刷新后操作"}, status=409)
-        tile = next((tile for tile in manager.layout["tiles"] if tile["id"] == body.get("tile_id")), None)
+        tile = find_tile(manager.layout, body.get("tile_id"))
         if tile is None:
             return web.json_response({"error": "卡片不存在"}, status=404)
         if not owner.permissions.check_entity(tile["entity_id"], POLICY_CONTROL):
             return web.json_response({"error": "没有控制该设备的权限"}, status=403)
         try:
-            domain, service, fields = service_for_action(tile, body.get("action"), body.get("value"),
-                                                        manager.state_for(tile["entity_id"]))
+            domain, service, fields = service_for_action(
+                tile, body.get("action"), body.get("value"), manager.state_for(tile["entity_id"]),
+                manager.system_unit, display_unit(manager.layout, manager.system_unit))
             await manager.hass.services.async_call(domain, service, fields, blocking=True,
                                                     context=Context(user_id=owner.id))
         except (ProtocolError, HomeAssistantError, ValueError, TypeError):
@@ -193,41 +226,41 @@ class ActionView(HomeAssistantView):
 
 
 @websocket_api.websocket_command({
-    "type": "kindle_panel/manage", vol.Required("action"): vol.In(["load", "preview", "save", "pair", "revoke"]),
+    "type": "kindle_panel/manage",
+    vol.Required("action"): vol.In(["load", "preview", "save", "pair", "revoke"]),
     vol.Optional("layout"): dict, vol.Optional("revision"): int, vol.Optional("device_id"): str,
 })
 @websocket_api.require_admin
 @websocket_api.async_response
 async def websocket_manage(hass, connection, msg):
     manager = runtime(hass)
+    action, device_id = msg["action"], msg.get("device_id")
     try:
         async with manager.lock:
-            action = msg["action"]
             if action == "preview":
-                layout = normalize_layout(msg.get("layout"))
-                device = manager.devices.get(msg.get("device_id"), {"width": 758, "height": 1024})
-                connection.send_result(msg["id"], {
-                    "layout": layout, "states": manager.states_for(connection.user, layout),
-                    "geometry": geometry(layout, device["width"], device["height"]),
-                    "temperature_unit": str(hass.config.units.temperature_unit),
-                })
+                layout = normalize_layout(deepcopy(msg.get("layout")))
+                connection.send_result(msg["id"], manager.admin_data(connection.user, layout, device_id))
+                return
+            if action == "pair":
+                connection.send_result(msg["id"], manager.pairing.create(connection.user.id))
                 return
             if action == "save":
                 if msg.get("revision") != manager.revision:
-                    raise ProtocolError("布局已被更新，请重新加载后再保存")
-                layout = normalize_layout(msg.get("layout"))
-                if any(hass.states.get(tile["entity_id"]) is None for tile in layout["tiles"]):
-                    raise ProtocolError("布局中有不存在的实体，请重新选择")
+                    raise ProtocolError("布局已被其他页面更新，请重新加载后再保存")
+                layout = normalize_layout(deepcopy(msg.get("layout")))
+                missing = [tile["title"] for tile in iter_tiles(layout) if hass.states.get(tile["entity_id"]) is None]
+                if missing:
+                    raise ProtocolError(f"这些卡片的实体不存在：{'、'.join(missing[:3])}")
                 manager.layout = layout
                 manager.revision += 1
                 await manager.save()
-            elif action == "pair":
-                connection.send_result(msg["id"], manager.pairing.create(connection.user.id))
-                return
             elif action == "revoke":
-                manager.devices.pop(msg.get("device_id"), None)
-                await manager.save()
-            connection.send_result(msg["id"], manager.admin_data(connection.user))
+                if manager.devices.pop(device_id, None) is not None:
+                    await manager.save()
+                    registry = dr.async_get(hass)
+                    if entry := registry.async_get_device(identifiers={(DOMAIN, device_id)}):
+                        registry.async_remove_device(entry.id)
+            connection.send_result(msg["id"], manager.admin_data(connection.user, device_id=device_id))
     except ProtocolError as err:
         connection.send_error(msg["id"], "invalid_layout", str(err))
 
@@ -249,7 +282,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await panel_custom.async_register_panel(
         hass, frontend_url_path=PANEL_PATH, webcomponent_name="kindle-panel-editor",
         sidebar_title="Kindle 面板", sidebar_icon="mdi:tablet-dashboard",
-        module_url="/kindle_panel_static/editor.js?v=0.2.0", require_admin=True,
+        module_url=f"/kindle_panel_static/editor.js?v={VERSION}", require_admin=True,
         config_panel_domain=DOMAIN,
     )
     return True

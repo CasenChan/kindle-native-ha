@@ -1,15 +1,17 @@
 # Kindle Native HA
 
-在 Kindle 原系统上运行的 Home Assistant 原生控制面板。使用 KOReader Lua 控件直接绘制中文、黑白卡片和 SVG 图标，HA 侧提供可视化编辑器与 Kindle 屏幕预览。
+在 Kindle 原系统上运行的 Home Assistant 原生控制面板。KOReader Lua 插件直接绘制中文黑白卡片和 SVG 图标；HA 侧提供可视化编辑器，并由服务端统一渲染屏幕，网页预览与 Kindle 画面完全一致。
 
 ## 功能
 
-- 在 HA 侧边栏选择实体，修改名称、图标、卡片宽度、顺序和每页布局。
-- Kindle 控制灯光、开关、风扇和空调，执行场景、脚本及按钮操作；其他实体显示状态。
-- 网页与 Kindle 共用布局几何，保存后按刷新周期同步；预览点击只选择编辑，不操作设备。
-- 十分钟有效的一次性文件配对，独立设备密钥，服务调用仅限已保存卡片及配对用户的实体权限。
+- **页面 → 房间分组 → 卡片**：最多 8 个命名页面，底部页签直接切换；一页可放多个房间分组，标题栏显示自动小结（如「2 盏灯开着 · 25.8°C」）。
+- **自定义网格**：每页 1–4 列，分组合计最多 8 行（4×6、3×6 等任意组合）；每张卡片可设宽×高，在预览里拖动换位、拖右下角改大小。
+- **Kindle 控制**：灯、开关、风扇、加湿器（拨钮开关）；空调目标温度 −/+ 与模式切换；场景、脚本、按钮执行；门窗、门锁、人体、窗帘等显示中文状态。
+- **温度单位**：跟随 HA，或固定摄氏 / 华氏；空调与温度传感器统一换算，Kindle 加减温度也按所选单位。
+- **背光调节**：Kindle 顶部太阳按钮，12 段亮度条与关闭/低/中/高档位。
+- **HA 编辑器**：可搜索的实体选择、18 个图标、深色主题与手机布局、设备管理（在线状态、电量、同步状态、撤销配对）、配对地址设置。
+- **安全**：十分钟一次性文件配对，独立设备密钥；服务调用只限已保存卡片、白名单服务及配对用户的实体权限。
 - 重启自动进入面板；默认接电持续刷新、电池休眠保留画面，唤醒后刷新。
-- 支持分页、手动刷新、维护退出及 USB 禁用自动启动。
 
 ## 已验证环境
 
@@ -18,18 +20,18 @@
 | Kindle | Paperwhite 1，固件 5.6.1.1，已越狱 |
 | KOReader | Kindle 2026.07.1 |
 | Home Assistant Core | 2026.9.2 |
-| Kindle Panel 集成 | 0.2.0 |
+| Kindle Panel 集成 | 0.2.0 实机验证；0.3.0 尚待实机验证 |
 
-实机已验证中文与图标、网页布局同步、配对、灯光控制、开机进入、接电及休眠唤醒。其他机型和固件仍需自行验证。本项目以已经安装好 KUAL、Hotfix 和 KOReader 的 Kindle 为起点。
+0.2.0 已在实机验证中文与图标、布局同步、配对、灯光控制、开机进入、接电及休眠唤醒。0.3.0 重做了编辑器与 Kindle 绘制，电脑端测试全部通过，但字体、触摸、背光和刷新效果需要在实机上重新确认。本项目以已经安装好 KUAL、Hotfix 和 KOReader 的 Kindle 为起点。
 
 ## 快速开始
 
 1. 按[安装说明](docs/install.md)构建并安装 HA 集成。
-2. 在 HA 添加 **Kindle Panel**，打开侧边栏 **Kindle 面板**，将示例卡片改为实际存在的实体并保存。
-3. 将原生插件部署到 Kindle，下载并导入一次性配对文件。
+2. 在 HA 添加 **Kindle Panel**，打开侧边栏 **Kindle 面板**，把示例卡片换成实际实体并保存。
+3. 将原生插件部署到 Kindle，在编辑器「设备」里下载一次性配对文件并导入。
 4. 验证控制与退出后，再安装开机启动。
 
-网页地址为你的 HA 地址后加 `/kindle-panel`。Kindle 直接连接 HA，运行时无需电脑。
+从 0.2 升级：HA 集成与 Kindle 插件需要**一起更新**（0.3 的屏幕数据格式不同）。已保存的布局会自动迁移为一个页面、一个不带标题的分组，卡片顺序不变。
 
 ## 开发与检查
 
@@ -44,19 +46,19 @@ npm --prefix native-ha run check
 python ha-integration/package.py
 ```
 
-离线预览：`python ha-integration/preview_server.py`，随后访问 `http://127.0.0.1:8765`。它使用示例状态，不连接实际 HA。打包结果位于 `ha-integration/dist/`，不提交生成的 ZIP。
+离线预览：`python ha-integration/preview_server.py`，随后访问 `http://127.0.0.1:8765`（加 `?dark` 看深色主题，`?narrow` 看手机布局）。它使用 `demo.py` 中的虚构实体，不连接实际 HA。打包结果位于 `ha-integration/dist/`，不提交生成的 ZIP。
 
 ## 目录
 
 | 路径 | 内容 |
 | --- | --- |
-| `ha-integration/custom_components/kindle_panel` | HA 配置流、存储、配对与设备 API |
-| `ha-integration/frontend` | 编辑器与图标源文件 |
-| `ha-integration/build.py` | 生成前端单文件、原生图标、默认快照和控制器 |
-| `native-ha/nativeha.koplugin` | 原生卡片、触摸、网络与状态逻辑 |
+| `ha-integration/custom_components/kindle_panel` | HA 配置流、存储、配对与设备 API；`protocol.py` 布局模型，`display.py` 状态文案，`render.py` 屏幕渲染 |
+| `ha-integration/frontend` | 编辑器源文件（`src/`）与图标 |
+| `ha-integration/build.py` | 生成前端单文件、原生图标（黑/白/灰）、默认画面和控制器 |
+| `native-ha/nativeha.koplugin` | 绘制指令、触摸、背光、网络与状态逻辑 |
 | `native-ha/controller-source.lua` | 控制器规范源；构建时复制为插件 main.lua |
 | `native-ha/startup` | 开机任务及安装器 |
-| `native-ha/tests` | 当前设备 API 与传输合约检查 |
+| `native-ha/tests` | 设备 API、传输与面板绘制合约检查 |
 | `docs` | 安装、架构与恢复说明 |
 
 [架构和凭据边界](docs/architecture.md) · [维护与恢复](docs/recovery.md) · [开发说明](CONTRIBUTING.md)
