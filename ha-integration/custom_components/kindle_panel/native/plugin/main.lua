@@ -178,12 +178,11 @@ function NativeHA:backlightState()
 end
 
 function NativeHA:toggleBacklight()
-    if self.panel.popover then
-        self.panel.popover=nil;self:render('flashui');return
-    end
+    if self.panel.popover then self.panel:closePopover();return end
     local state=self:backlightState()
     if not state then UIManager:show(InfoMessage:new{text='这台 Kindle 没有可调节的背光。',timeout=3});return end
-    self.panel.popover=state;self:render('ui')
+    self.panel.popover=state
+    self.panel:update(self.client.snapshot,self:tokens(),self.busy,'ui',false,self.panel:popoverRegion())
 end
 
 function NativeHA:applyLevel(level)
@@ -214,10 +213,12 @@ function NativeHA:setLight(level)
     if level>0 then self.wake_level=level end
 end
 
+-- The light changes immediately on every step; only the popover is repainted (throttled while dragging).
 function NativeHA:setBacklight(level,mode)
     self:setLight(level)
     self:wakeLight()            -- restart the auto-off timer while adjusting
-    self.panel.popover=self:backlightState();self:render(mode or 'ui')
+    local state=self:backlightState()
+    if mode=='fast' then self.panel:queuePopover(state) else self.panel:updatePopover(state,mode or 'ui') end
 end
 
 -- Touch-to-light: any touch turns the light on (the waking tap does nothing else) and it goes dark again after

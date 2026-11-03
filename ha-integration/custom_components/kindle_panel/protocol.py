@@ -10,7 +10,7 @@ import secrets
 import time
 
 DOMAIN = "kindle_panel"
-VERSION = "0.5.0"
+VERSION = "0.5.1"
 LAYOUT_VERSION = 2
 ICONS = ("bulb", "thermostat", "temperature", "humidity", "power", "fan", "home", "scene", "plug", "sensor",
          "door", "window", "lock", "curtain", "tv", "motion", "battery", "bolt", "music")

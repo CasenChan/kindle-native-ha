@@ -1,10 +1,10 @@
 {
- "version": "0.5.0",
+ "version": "0.5.1",
  "files": [
   {
    "path": "plugin/_meta.lua",
    "bytes": 141,
-   "sha256": "44c496686984e951212fc5f488aea36949b9a72a92dac780c3ecc98a11844201"
+   "sha256": "ffb40093514f2438dbb21e751dc4aa8917e51720c19232efce33c7ffa0e6c589"
   },
   {
    "path": "plugin/deviceapi.lua",
@@ -18,13 +18,13 @@
   },
   {
    "path": "plugin/main.lua",
-   "bytes": 24141,
-   "sha256": "165c21523f2501ca436d090f0329295e9fc6d6e971eae66478280ca2872f3788"
+   "bytes": 24380,
+   "sha256": "4a6c0c238a08b3b7d63ea36e8d1a11d24bc43722bda1ec5b63466afe59bbfec7"
   },
   {
    "path": "plugin/panelwidget.lua",
-   "bytes": 14751,
-   "sha256": "09a7f51dbeea258cf584074a4c1f07613d40a376ff433d6e34c15d922e173e70"
+   "bytes": 16738,
+   "sha256": "f9b4d52fc371d4366906f2d974486943a230bd777d57fdcd768ec743999685d7"
   },
   {
    "path": "plugin/updater.lua",

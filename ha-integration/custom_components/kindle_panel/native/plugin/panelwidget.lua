@@ -15,6 +15,7 @@ local ICON_SUFFIX = { k='', w='-w', g='-g' }
 local LIGHT_STEPS = 12
 local CONFIRM_SECONDS = 5
 local FULL_REFRESH_EVERY = 12
+local DRAG_REPAINT_SECONDS = 0.12   -- while dragging, the bar repaints at most ~8 times a second
 
 local Panel = InputContainer:extend{ covers_fullscreen = true }
 
@@ -99,8 +100,8 @@ function Panel:currentPage()
 end
 
 -- mode: KOReader refresh type. status_only: only the header status/battery text changed, so refresh just that
--- strip and do not count it towards the periodic full refresh.
-function Panel:update(snapshot, tokens, busy, mode, status_only)
+-- strip and do not count it towards the periodic full refresh. region: refresh only this area (popover open/close).
+function Panel:update(snapshot, tokens, busy, mode, status_only, region)
     self.snapshot, self.tokens, self.busy = snapshot, tokens or {}, busy
     self:freeItems()
     local page, t = self:currentPage(), self.tokens
@@ -126,7 +127,9 @@ function Panel:update(snapshot, tokens, busy, mode, status_only)
             if card.id == self.pressed then self:addRect(card.x, card.y, card.w, card.h, nil, 5, 0, card.r) end
         end
     end
+    self.popover_start = #self.items + 1
     if self.popover then self:buildPopover() end
+    if region then UIManager:setDirty(self, mode or 'ui', region);return end
     if status_only and not self.popover then
         local region = self:statusRegion(page)
         if region then UIManager:setDirty(self, 'ui', region);return end
@@ -174,6 +177,49 @@ function Panel:popoverGeometry()
     local s, width = self.snapshot.screen.scale, self.snapshot.screen.width
     local x = math.floor(150 * s)
     return { s=s, x=x, y=math.floor(96 * s), w=width - math.floor(28 * s) - x, h=math.floor(252 * s) }
+end
+
+-- Area covering the popover and the sun button, refreshed when the popover opens or closes.
+function Panel:popoverRegion()
+    local p = self:popoverGeometry()
+    local top = math.floor(18 * p.s)
+    return Geom:new{ x=p.x - 8, y=top, w=self.dimen.w - (p.x - 8), h=p.y + p.h + 8 - top }
+end
+
+-- Level changes redraw only the popover's own widgets and refresh only its box; they never touch the cards
+-- or count towards the periodic full refresh.
+function Panel:updatePopover(state, mode)
+    UIManager:unschedule(self.flush_popover)
+    self.flush_scheduled = false
+    self.popover = state
+    for i = #self.items, self.popover_start or (#self.items + 1), -1 do
+        local item = self.items[i]
+        if item.widget and item.widget.free then item.widget:free() end
+        self.items[i] = nil
+    end
+    self:buildPopover()
+    local p = self:popoverGeometry()
+    UIManager:setDirty(self, mode or 'ui', Geom:new{ x=p.x - 4, y=p.y - 4, w=p.w + 8, h=p.h + 8 })
+end
+
+-- During a drag the light follows every step (done by the caller); the picture catches up at a bounded rate.
+function Panel:queuePopover(state)
+    self.popover = state
+    if self.flush_scheduled then return end
+    self.flush_scheduled = true
+    self.flush_popover = self.flush_popover or function()
+        self.flush_scheduled = false
+        if self.popover then self:updatePopover(self.popover, 'fast') end
+    end
+    UIManager:scheduleIn(DRAG_REPAINT_SECONDS, self.flush_popover)
+end
+
+function Panel:closePopover()
+    if not self.popover then return end
+    local region = self:popoverRegion()
+    UIManager:unschedule(self.flush_popover)
+    self.flush_scheduled, self.sliding, self.popover = false, false, nil
+    self:update(self.snapshot, self.tokens, self.busy, 'flashui', false, region)
 end
 
 function Panel:buildPopover()
@@ -255,8 +301,7 @@ function Panel:onTap(_, gesture)
                 if inside(region, pos) then self.on_backlight(region.level);break end
             end
         else
-            self.popover = nil
-            self:update(self.snapshot, self.tokens, self.busy, 'flashui')
+            self:closePopover()
         end
         return true
     end

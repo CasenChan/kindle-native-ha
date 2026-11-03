@@ -35,7 +35,9 @@ os.date=function(fmt)if fmt=='*t' then return {hour=clock.hour,min=clock.min,mon
 local NativeHA=dofile('nativeha.koplugin/main.lua')
 local renders={}
 local ha=setmetatable({path='nativeha.koplugin',active=true,night={},
-    panel={page=0,update=function(_,_,_,_,mode,status_only)renders[#renders+1]=status_only and 'status' or (mode or 'ui')end},
+    panel={page=0,update=function(_,_,_,_,mode,status_only)renders[#renders+1]=status_only and 'status' or (mode or 'ui')end,
+        queuePopover=function(_,state)renders[#renders+1]='queued:'..state.level end,
+        updatePopover=function(_,state,mode)renders[#renders+1]=mode..':'..state.level end},
     client={snapshot={},online=true}},{__index=NativeHA})
 
 -- remote backlight from the HA number entity
@@ -85,6 +87,12 @@ ha.panel.popover={};ha:goDark()
 check(light.on,'The light stays on while the backlight popover is open');ha.panel.popover=nil
 ha:goDark();ha.client.snapshot={touch_light={enabled=false,timeout=30}};ha:syncTouchLight()
 check(light.on and light.level==6 and not ha.auto_dark,'Turning the feature off restores the light')
+
+-- dragging the backlight bar: light follows every step, picture is only queued
+light.on,light.level=true,10
+ha:setBacklight(14,'fast');check(light.level==14 and renders[#renders]=='queued:14','A drag step changes the light at once and only queues a repaint')
+ha:setBacklight(15,'fast');check(light.level==15 and renders[#renders]=='queued:15','Every step reaches the hardware')
+ha:setBacklight(15,'ui');check(renders[#renders]=='ui:15','Release repaints the popover cleanly')
 
 -- plugin update explanations
 local shown
