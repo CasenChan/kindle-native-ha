@@ -47,6 +47,14 @@ local function validPage(page, width, height, states)
             return nil, '触控区域有误'
         end
     end
+    if page.regions ~= nil then
+        if type(page.regions) ~= 'table' or #page.regions > MAX_HITS then return nil, '刷新区域有误' end
+        for _, region in ipairs(page.regions) do
+            if type(region) ~= 'table' or type(region.hash) ~= 'string' or not box(region, width, height) then
+                return nil, '刷新区域有误'
+            end
+        end
+    end
     for _, card in ipairs(page.cards) do
         if type(card) ~= 'table' or type(card.id) ~= 'string' or not box(card, width, height) then
             return nil, '卡片位置数据有误'

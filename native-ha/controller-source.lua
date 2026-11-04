@@ -145,8 +145,29 @@ function NativeHA:tokens()
         battery=tostring(info.battery)..'%'..(info.charging and '+' or '')}
 end
 
-function NativeHA:render(mode,status_only)
-    if self.active then self.panel:update(self.client.snapshot,self:tokens(),self.busy,mode,status_only)end
+function NativeHA:render(mode,status_only,regions)
+    if self.active then self.panel:update(self.client.snapshot,self:tokens(),self.busy,mode,status_only,regions)end
+end
+
+-- Regions of the visible page whose content fingerprint changed between two frames (plus the card that showed
+-- the pressed outline). nil means the layout itself changed and the whole page must be repainted.
+function NativeHA:changedRegions(old,new,pressed_id)
+    if type(old)~='table' or old.revision~=new.revision then return nil end
+    local index=self.panel.page+1
+    local a,b=old.pages[index],new.pages[index]
+    if not a or not b or a.id~=b.id or type(a.regions)~='table' or type(b.regions)~='table' or #a.regions~=#b.regions then
+        return nil
+    end
+    local out={}
+    for i,region in ipairs(b.regions) do
+        local before=a.regions[i]
+        if before.x~=region.x or before.y~=region.y or before.w~=region.w or before.h~=region.h then return nil end
+        if before.hash~=region.hash then out[#out+1]=region end
+    end
+    local box=pressed_id and self.panel:cardBox(pressed_id)
+    if box then out[#out+1]=box end
+    if #out>8 then return nil end   -- most of the page changed: one clean repaint is better
+    return out
 end
 
 -- ------------------------------------------------------------------ return to the first page
@@ -164,8 +185,7 @@ function NativeHA:returnHome()
     local timeout=tonumber(self.client.snapshot.home_timeout) or 0
     if timeout<=0 or self.panel.page==0 or self.panel.popover or self.popup or self.busy then return end
     if os.time()-(self.last_interaction or 0)<timeout*60 then return end
-    self.panel.page=0;self.panel.pressed=nil
-    self:render('flashui')
+    self.panel:goPage(0)
 end
 
 -- ------------------------------------------------------------------ backlight
@@ -384,12 +404,12 @@ function NativeHA:refresh(manual)
         self.busy,self.status,self.status_error=true,'正在读取设备…',false;self:render(nil,true);UIManager:forceRePaint()
     end
     self.busy=true
-    local previous=self.client.snapshot.hash
+    local before=self.client.snapshot
     local paired,pair_error=self:pairIfPresent()
     local result,err
     if paired then result,err=self.client:refresh(self:deviceInfo())else err=pair_error end
     self.busy=false
-    local pressed=self.panel.pressed~=nil
+    local pressed_id=self.panel.pressed
     self.panel.pressed=nil
     if result then
         self.status,self.status_error=updatedText(),false
@@ -401,8 +421,16 @@ function NativeHA:refresh(manual)
     self:syncTouchLight()
     self:applyNightLight()
     local remote=result and self:applyRemoteBacklight()
-    local changed=pressed or (result and (result.hash==nil or result.hash~=previous))
-    if result and not changed then self:render(nil,true)else self:render()end
+    -- Repaint only what changed: unchanged frames touch just the status strip, state changes just their cards.
+    if not result then
+        local box=pressed_id and self.panel:cardBox(pressed_id)
+        if box then self:render(nil,false,{box}) else self:render(nil,true) end
+    else
+        local regions=result.hash~=nil and self:changedRegions(before,result,pressed_id)
+        if not regions then self:render()
+        elseif #regions==0 then self:render(nil,true)
+        else self:render(nil,false,regions) end
+    end
     self:returnHome()
     if remote then return result end
     if not self.captured then UIManager:unschedule(self.capture_task);UIManager:scheduleIn(1,self.capture_task)end
@@ -420,12 +448,13 @@ function NativeHA:perform(hit,pos)
         if not hit or not hit.tile or not self.client:available(hit.tile) then return end
         self.panel.pressed=hit.tile
     end
-    self.busy,self.status,self.status_error=true,'正在发送指令…',false;self:render('fast');UIManager:forceRePaint()
+    self.busy,self.status,self.status_error=true,'正在发送指令…',false;self:render(nil,true);UIManager:forceRePaint()
     local result,err,code=self.client:action(hit.tile,hit.action,hit.value)
     self.busy=false
     if result then self.status,self.status_error='指令已发送，等待设备状态…',false
-    else self.status,self.status_error=(err or '指令未完成')..' · 轻触重试',true;self.panel.pressed=nil end
-    self:render()
+    else self.status,self.status_error=(err or '指令未完成')..' · 轻触重试',true end
+    local box=not result and self.panel.pressed and self.panel:cardBox(self.panel.pressed)
+    if box then self.panel.pressed=nil;self:render(nil,false,{box}) else self:render(nil,true) end
     UIManager:unschedule(self.refresh_task)
     UIManager:scheduleIn(result and 1.5 or code==409 and .1 or 15,self.refresh_task)
 end

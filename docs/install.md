@@ -11,7 +11,7 @@ python ha-integration/build.py
 python ha-integration/package.py
 ```
 
-解压 `ha-integration/dist/kindle-panel-0.5.1.zip`，将其中 `custom_components/kindle_panel` 复制到 HA 配置目录的 `custom_components/kindle_panel`。可使用 HA 官方 File editor；配置目录在不同安装中可能显示为 `/config` 或 `/homeassistant`。
+解压 `ha-integration/dist/kindle-panel-0.5.2.zip`，将其中 `custom_components/kindle_panel` 复制到 HA 配置目录的 `custom_components/kindle_panel`。可使用 HA 官方 File editor；配置目录在不同安装中可能显示为 `/config` 或 `/homeassistant`。
 
 检查 HA 配置并重启，在“设置 → 设备与服务 → 添加集成”搜索 **Kindle Panel**。完成后打开侧边栏 **Kindle 面板**。
 

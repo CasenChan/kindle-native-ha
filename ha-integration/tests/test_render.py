@@ -168,6 +168,23 @@ class RenderTests(unittest.TestCase):
                                 if "tile" in hit:
                                     self.assertGreaterEqual(min(hit["w"], hit["h"]), 30, label)
 
+    def test_regions_fingerprint_only_what_changed(self):
+        before, _ = render()
+        states = {**demo.STATES, "light.bedside": {**demo.STATES["light.bedside"], "state": "off"}}
+        after, _ = render(states=states)
+        old, new = before["pages"][0]["regions"], after["pages"][0]["regions"]
+        self.assertEqual([(r["x"], r["y"], r["w"], r["h"]) for r in old], [(r["x"], r["y"], r["w"], r["h"]) for r in new])
+        changed = [r for r, o in zip(new, old) if r["hash"] != o["hash"]]
+        card = next(c for c in after["pages"][0]["cards"] if c["id"] == "t7")
+        # The bedside light card and the bedroom summary ("1 盏灯开着" → "灯已全关") change; nothing else.
+        self.assertEqual(len(changed), 2)
+        self.assertTrue(any(r["x"] <= card["x"] and r["y"] <= card["y"] and r["x"] + r["w"] >= card["x"] + card["w"]
+                            for r in changed))
+        for page in after["pages"]:
+            for region in page["regions"]:
+                self.assertTrue(inside(region, 758, 1024), region)
+        self.assertEqual(before["pages"][1]["regions"], after["pages"][1]["regions"])
+
     def test_payload_stays_small(self):
         snap, _ = render()
         self.assertLess(len(json.dumps(snap, ensure_ascii=False).encode()), 200_000)

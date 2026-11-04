@@ -120,7 +120,11 @@ check(dirty[#dirty]=='flashui' and regions[#dirty] and regions[#dirty].h<400,'Cl
 panel:onPan(nil,{pos={x=slider.x+10,y=slider.y+10}})
 check(#levels==4,'No slider without the popover')
 tap(250,980);check(panel.page==1,'Footer tab switches page')
-check(dirty[#dirty]=='flashui','Page changes flash to clear ghosting')
+check(dirty[#dirty]=='partial' and regions[#dirty]==nil,'Page turns repaint without flashing')
+local flashes=0
+for _=1,8 do panel:goPage(panel.page+1);if dirty[#dirty]=='flashui' then flashes=flashes+1 end end
+check(flashes==1,'One flashing refresh every eight page turns clears ghosting')
+panel.page=1
 panel:onSwipe(nil,{direction='west'});check(panel.page==0,'Swipe wraps around pages')
 panel.page=0;panel:update(frame,{},false)
 tap(500,800);check(events[#events]=='confirm:lock','Unlocking first asks for confirmation')
@@ -136,6 +140,20 @@ for _=1,12 do panel:update(frame,{},false);if dirty[#dirty]=='full' then fulls=f
 check(fulls==1,'Every 12 content updates trigger exactly one full refresh')
 swallow=true;count=#events;tap(100,200)
 check(#events==count,'The tap that wakes the backlight does nothing else');swallow=false
+-- card taps and state changes repaint only their cards
+panel.page=0;panel:update(frame,{},false);local marks=#dirty
+tap(100,200)
+check(#dirty==marks+1 and dirty[#dirty]=='fast' and regions[#dirty].w<=351+12 and regions[#dirty].h<=268+12,'A card tap refreshes only that card')
+local box=panel:cardBox('lamp')
+check(box.x==14 and box.y==122 and box.w==363,'Card boxes include the pressed outline')
+local counted=panel.region_updates or 0;marks=#dirty
+panel:update(frame,{status='x'},false,nil,false,{{x=20,y=400,w=718,h=268},{x=20,y=128,w=351,h=268}})
+check(#dirty==marks+3,'Each changed region and the status strip are refreshed')
+check(regions[marks+1].w==718 and regions[marks+2].h==268,'Regions are refreshed exactly where they changed')
+check(panel.region_updates==counted+1,'Region repaints are counted separately from full repaints')
+local fulls=0
+for _=1,30 do panel:update(frame,{},false,nil,false,{{x=20,y=128,w=351,h=268}});if dirty[#dirty]=='full' then fulls=fulls+1 end end
+check(fulls==1,'Every 30 region repaints one clean full refresh clears ghosting')
 local before=widgets;panel:update(frame,{},false);panel:onCloseWidget()
 check(widgets<=before,'Text widgets are freed')
 print('Native panel contract: '..checks..' checks passed')
