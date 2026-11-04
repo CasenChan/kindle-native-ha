@@ -37,7 +37,10 @@ local renders={}
 local ha=setmetatable({path='nativeha.koplugin',active=true,night={},
     panel={page=0,update=function(_,_,_,_,mode,status_only)renders[#renders+1]=status_only and 'status' or (mode or 'ui')end,
         queuePopover=function(_,state)renders[#renders+1]='queued:'..state.level end,
-        updatePopover=function(_,state,mode)renders[#renders+1]=mode..':'..state.level end},
+        updatePopover=function(_,state,mode)renders[#renders+1]=mode..':'..state.level end,
+        goPage=function(self,index)self.page=index;renders[#renders+1]='page:'..index end,
+        currentPage=function()return {cards={{id='lamp',x=20,y=128,w=351,h=268}}}end,
+        cardBox=function(_,id)if id=='lamp' then return {x=14,y=122,w=363,h=280}end end},
     client={snapshot={},online=true}},{__index=NativeHA})
 
 -- remote backlight from the HA number entity
@@ -67,7 +70,7 @@ clock.hour=23;ha:applyNightLight();check(light.level==18,'Disabled schedule neve
 ha.client.snapshot={home_timeout=3};ha.panel.page=2
 ha.last_interaction=os.time()-60;ha:returnHome();check(ha.panel.page==2,'Stay while the user was recently active')
 ha.last_interaction=os.time()-200;ha:returnHome();check(ha.panel.page==0,'Return home after the timeout')
-check(renders[#renders]=='flashui','Returning home flashes to clear ghosting')
+check(renders[#renders]=='page:0','Returning home is a normal page turn')
 ha.client.snapshot={home_timeout=0};ha.panel.page=1;ha.last_interaction=0;ha:returnHome()
 check(ha.panel.page==1,'Timeout 0 disables returning home')
 -- touch-to-light
@@ -93,6 +96,25 @@ light.on,light.level=true,10
 ha:setBacklight(14,'fast');check(light.level==14 and renders[#renders]=='queued:14','A drag step changes the light at once and only queues a repaint')
 ha:setBacklight(15,'fast');check(light.level==15 and renders[#renders]=='queued:15','Every step reaches the hardware')
 ha:setBacklight(15,'ui');check(renders[#renders]=='ui:15','Release repaints the popover cleanly')
+
+-- which regions a refresh repaints
+local function frame(rev,hashes,id)
+    local regions={}
+    for i,h in ipairs(hashes)do regions[i]={x=0,y=i*100,w=700,h=90,hash=h}end
+    return {revision=rev,pages={{id=id or 'home',regions=regions}}}
+end
+ha.panel.page=0
+local changed=ha:changedRegions(frame(1,{'a','b','c'}),frame(1,{'a','B','c'}))
+check(#changed==1 and changed[1].y==200,'Only the region whose fingerprint changed is repainted')
+check(#ha:changedRegions(frame(1,{'a','b'}),frame(1,{'a','b'}))==0,'An unchanged page repaints nothing but the status strip')
+check(ha:changedRegions(frame(1,{'a'}),frame(2,{'a'}))==nil,'A new layout revision repaints the whole page')
+check(ha:changedRegions(frame(1,{'a'}),frame(1,{'a','b'}))==nil,'A changed region list repaints the whole page')
+check(ha:changedRegions(frame(1,{'a'},'home'),frame(1,{'a'},'other'))==nil,'A different page repaints the whole page')
+local with_pressed=ha:changedRegions(frame(1,{'a'}),frame(1,{'a'}),'lamp')
+check(#with_pressed==1 and with_pressed[1].x==14,'The pressed outline is cleared by repainting just that card')
+local many={};local more={}
+for i=1,10 do many[i]='x'..i;more[i]='y'..i end
+check(ha:changedRegions(frame(1,many),frame(1,more))==nil,'When most of the page changed, repaint it once')
 
 -- plugin update explanations
 local shown

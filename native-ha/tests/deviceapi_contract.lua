@@ -57,6 +57,10 @@ local good=snapshot();good.backlight_target={id=3,level=40}
 check(client:accept(good,true),'Accept a queued backlight command')
 bad=snapshot();bad.backlight_target={id=3,level=400}
 check(not client:accept(bad,true),'Reject an out-of-range backlight level')
+good=snapshot();good.pages[1].regions={{x=14,y=122,w=363,h=280,hash='abc'}}
+check(client:accept(good,true),'Accept refresh regions')
+bad=snapshot();bad.pages[1].regions={{x=14,y=122,w=9000,h=280,hash='abc'}}
+check(not client:accept(bad,true),'Reject refresh regions outside the screen')
 bad=snapshot();bad.pages={}
 check(not client:accept(bad,true),'Reject frames without pages')
 print('Scoped device API contract: '..checks..' checks passed')

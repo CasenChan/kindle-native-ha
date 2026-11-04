@@ -84,6 +84,12 @@ class Canvas:
             op["k"] = key
         self.ops.append(op)
 
+    def region(self, start: int, x, y, w, h, regions: list):
+        """Record a refresh region holding ops[start:], fingerprinted so the Kindle can repaint only what changed."""
+        digest = hashlib.sha1(json.dumps(self.ops[start:], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:10]
+        regions.append({"x": max(0, round(x)), "y": max(0, round(y)), "w": max(1, round(w)), "h": max(1, round(h)),
+                        "hash": digest})
+
     def hit(self, x, y, w, h, **target):
         self.hits.append({"x": round(x), "y": round(y), "w": round(w), "h": round(h), **target})
 
@@ -443,7 +449,10 @@ def render_page(layout: dict, index: int, views: dict, width: int, height: int) 
     page = layout["pages"][index]
     s = min(width / BASE_W, height / BASE_H)
     cv = Canvas(s)
+    regions = []
     header(cv, page["title"], width)
+    # The header's device-filled texts (status, battery) are refreshed separately by the Kindle.
+    cv.region(0, 0, 0, width, 128 * s, regions)
     multi = len(layout["pages"]) > 1
     margin, top = 28 * s, 128 * s
     bottom = height - (80 if multi else 24) * s
@@ -460,6 +469,7 @@ def render_page(layout: dict, index: int, views: dict, width: int, height: int) 
     cards, section_boxes, cursor = [], [], top
     for section, head in zip(sections, heads):
         if head:
+            start = len(cv.ops)
             title_size = 24 * s
             cv.text(section["title"], margin, cursor + 8 * s, title_size, INK, True, width=width / 2)
             summary = section_summary(section, views) if section["summary"] else ""
@@ -469,6 +479,7 @@ def render_page(layout: dict, index: int, views: dict, width: int, height: int) 
                 cv.rect(line_left, cursor + 20 * s, line_right - line_left, cv.line, fill=INK)
             if summary:
                 cv.text(summary, width - margin, cursor + 12 * s, 17 * s, MID, align="r", width=width / 2)
+            cv.region(start, margin - 4 * s, cursor, width - 2 * margin + 8 * s, head, regions)
         grid_y = cursor + head
         section_boxes.append({"id": section["id"], "y": round(cursor), "head": round(head),
                               "grid": {"x": round(margin), "y": round(grid_y), "cw": round(cell_w, 2),
@@ -481,12 +492,17 @@ def render_page(layout: dict, index: int, views: dict, width: int, height: int) 
                     "h": round(tile["h"] * cell_h + (tile["h"] - 1) * gap), "r": round(radius)}
             cards.append(card)
             view = views[tile["id"]]
+            start = len(cv.ops)
             {"climate": climate_card, "cover": bar_card, "media": bar_card}.get(tile["kind"], tile_card)(cv, card, tile, view)
+            # Margin covers the 5 px pressed outline drawn by the Kindle around the card.
+            cv.region(start, card["x"] - 6, card["y"] - 6, card["w"] + 12, card["h"] + 12, regions)
         cursor = grid_y + section["rows"] * cell_h + (section["rows"] - 1) * gap + section_gap
     if multi:
+        start = len(cv.ops)
         tabs(cv, layout["pages"], index, width, height)
+        cv.region(start, 0, height - 76 * s, width, 76 * s, regions)
     return {"id": page["id"], "title": page["title"], "ops": cv.ops, "hits": cv.hits,
-            "cards": cards, "sections": section_boxes}
+            "cards": cards, "sections": section_boxes, "regions": regions}
 
 
 def build_views(layout: dict, states: dict, system_unit: str) -> dict:

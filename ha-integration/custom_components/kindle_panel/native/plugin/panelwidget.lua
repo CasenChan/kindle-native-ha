@@ -15,6 +15,8 @@ local ICON_SUFFIX = { k='', w='-w', g='-g' }
 local LIGHT_STEPS = 12
 local CONFIRM_SECONDS = 5
 local FULL_REFRESH_EVERY = 12
+local REGION_FULL_EVERY = 30        -- partial repaints of changed cards before one clean full refresh
+local PAGE_FULL_EVERY = 8           -- page turns before one flashing refresh
 local DRAG_REPAINT_SECONDS = 0.12   -- while dragging, the bar repaints at most ~8 times a second
 
 local Panel = InputContainer:extend{ covers_fullscreen = true }
@@ -100,7 +102,8 @@ function Panel:currentPage()
 end
 
 -- mode: KOReader refresh type. status_only: only the header status/battery text changed, so refresh just that
--- strip and do not count it towards the periodic full refresh. region: refresh only this area (popover open/close).
+-- strip and do not count it towards the periodic full refresh. region: refresh only this area (popover open/close),
+-- or a list of {x,y,w,h} boxes (changed cards / section heads) which are refreshed together with the status strip.
 function Panel:update(snapshot, tokens, busy, mode, status_only, region)
     self.snapshot, self.tokens, self.busy = snapshot, tokens or {}, busy
     self:freeItems()
@@ -129,7 +132,18 @@ function Panel:update(snapshot, tokens, busy, mode, status_only, region)
     end
     self.popover_start = #self.items + 1
     if self.popover then self:buildPopover() end
-    if region then UIManager:setDirty(self, mode or 'ui', region);return end
+    if region and region[1] then
+        self.region_updates = (self.region_updates or 0) + 1
+        if self.region_updates < REGION_FULL_EVERY then
+            for _, box in ipairs(region) do
+                UIManager:setDirty(self, mode or 'ui', Geom:new{ x=box.x, y=box.y, w=box.w, h=box.h })
+            end
+            local strip = self:statusRegion(page)
+            if strip then UIManager:setDirty(self, 'ui', strip) end
+            return
+        end
+        self.region_updates, mode = 0, 'full'
+    elseif region then UIManager:setDirty(self, mode or 'ui', region);return end
     if status_only and not self.popover then
         local region = self:statusRegion(page)
         if region then UIManager:setDirty(self, 'ui', region);return end
@@ -281,12 +295,23 @@ function Panel:cardAt(pos)
     end
 end
 
+-- Box around a card including the pressed outline, for card-only refreshes.
+function Panel:cardBox(id)
+    for _, card in ipairs(self:currentPage().cards) do
+        if card.id == id then return { x=math.max(0, card.x - 6), y=math.max(0, card.y - 6), w=card.w + 12, h=card.h + 12 } end
+    end
+end
+
+-- Page turns use a non-flashing partial refresh; every few turns one flashing refresh clears ghosting.
 function Panel:goPage(index)
     local count = #self.snapshot.pages
     if count < 2 then return end
     self.page = index % count
     self.pressed = nil
-    self:update(self.snapshot, self.tokens, self.busy, 'flashui')
+    self.page_turns = (self.page_turns or 0) + 1
+    local mode = 'partial'
+    if self.page_turns >= PAGE_FULL_EVERY then mode, self.page_turns = 'flashui', 0 end
+    self:update(self.snapshot, self.tokens, self.busy, mode)
 end
 
 function Panel:onTap(_, gesture)
@@ -328,7 +353,10 @@ function Panel:onTap(_, gesture)
     if target and target.tile then
         local card = self:cardAt(pos)
         self.pressed = card and card.id
-        self:update(self.snapshot, self.tokens, self.busy, 'fast')
+        local box = card and self:cardBox(card.id)
+        -- Pressed feedback touches only the card itself, with a fast refresh.
+        self:update(self.snapshot, self.tokens, self.busy, 'fast', false,
+            box and Geom:new{ x=box.x, y=box.y, w=box.w, h=box.h } or nil)
         self.on_action(target, pos)
     elseif self:cardAt(pos) then
         local card = self:cardAt(pos)
